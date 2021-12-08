@@ -1,0 +1,4 @@
+#!/bin/bash
+
+xrandr --output HDMI-0 --primary --mode 1920x1080
+xrandr --output DP-3 --auto --left-of HDMI-0 --rotate right
