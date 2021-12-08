@@ -1,7 +1,7 @@
 #!/bin/bash
 
 pushd ~/.dotfiles
-for folder in $(ls ./*/ | sed "s/.\///" | sed "s/\/://g")
+for folder in $(ls ./*/ | sed "s/.\///;s/\/://g")
 do
 	stow -D $folder
 	stow $folder
