@@ -7,6 +7,7 @@ set nowrap
 set tabstop=4
 set shiftwidth=4
 set encoding=UTF-8
+set hidden
 filetype indent plugin on
 syntax enable
 
