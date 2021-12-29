@@ -237,7 +237,7 @@ instance UrgencyHook LibNotifyUrgencyHook where
 myManageHook = composeAll
     [ title     =? "Mozilla Firefox"               --> doShift (myWorkspaces !! 0 )
     , (className =? "Firefox" <&&> resource =? "Dialog") --> doFloat
-    , (stringProperty "WM_WINDOW_ROLE" =? "GtkFileChooserDialog") --> doCenterFloat--doRectFloat (W.RationalRect (1 % 4) (1 % 4) (1 % 2) (1 % 2))
+    , (stringProperty "WM_WINDOW_ROLE" =? "GtkFileChooserDialog" <||> stringProperty "WM_WINDOW_ROLE" =? "pop-up") --> doCenterFloat--doRectFloat (W.RationalRect (1 % 4) (1 % 4) (1 % 2) (1 % 2))
     , className =? "Gcr-prompter" --> doCenterFloat ]
 
 ------------------------------------------------------------------------
