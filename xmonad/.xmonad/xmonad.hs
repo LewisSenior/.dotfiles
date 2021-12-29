@@ -13,6 +13,7 @@ import Data.Ratio
 import System.Exit
 import XMonad.Util.SpawnOnce
 import XMonad.Util.Run
+import XMonad.Operations
 import XMonad.Hooks.ManageDocks (avoidStruts, docksEventHook, manageDocks, ToggleStruts(..), docks)
 import XMonad.Hooks.DynamicLog (dynamicLogWithPP, wrap, xmobarPP, xmobarColor, shorten, PP(..))
 import XMonad.Hooks.WorkspaceHistory
@@ -31,9 +32,10 @@ import XMonad.Util.NamedWindows
 --
 myTerminal      = "alacritty"
 
+
 -- Whether focus follows the mouse pointer.
 myFocusFollowsMouse :: Bool
-myFocusFollowsMouse = True
+myFocusFollowsMouse = False
 
 -- Whether clicking on a window to focus also passes the click to the window
 myClickJustFocuses :: Bool
@@ -194,7 +196,7 @@ myMouseBindings (XConfig {XMonad.modMask = modm}) = M.fromList $
 -- The available layouts.  Note that each layout is separated by |||,
 -- which denotes layout choice.
 --
-myLayout = avoidStruts (tiled ||| Mirror tiled ||| Full)
+myLayout = avoidStruts (tiled ||| Mirror tiled ||| Full )
   where
      -- default tiling algorithm partitions the screen into two panes
      tiled   = spacingRaw False (Border 0 10 10 10) True (Border 6 6 6 6) True $ Tall nmaster delta ratio
@@ -235,7 +237,9 @@ instance UrgencyHook LibNotifyUrgencyHook where
 myManageHook = composeAll
     [ title     =? "Mozilla Firefox"               --> doShift (myWorkspaces !! 0 )
     , (className =? "Firefox" <&&> resource =? "Dialog") --> doFloat
-    , (stringProperty "WM_WINDOW_ROLE" =? "GtkFileChooserDialog") --> doRectFloat (W.RationalRect (1 % 2) (1 % 2) (1 % 2) (1 % 2)) ]
+    , (stringProperty "WM_WINDOW_ROLE" =? "GtkFileChooserDialog") --> doCenterFloat--doRectFloat (W.RationalRect (1 % 4) (1 % 4) (1 % 2) (1 % 2))
+    , className =? "Gcr-prompter" --> doCenterFloat ]
+
 ------------------------------------------------------------------------
 -- Event handling
 
