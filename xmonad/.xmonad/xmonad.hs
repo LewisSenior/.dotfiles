@@ -9,6 +9,7 @@
 
 import XMonad
 import Data.Monoid
+import Data.Ratio
 import System.Exit
 import XMonad.Util.SpawnOnce
 import XMonad.Util.Run
@@ -16,7 +17,7 @@ import XMonad.Hooks.ManageDocks (avoidStruts, docksEventHook, manageDocks, Toggl
 import XMonad.Hooks.DynamicLog (dynamicLogWithPP, wrap, xmobarPP, xmobarColor, shorten, PP(..))
 import XMonad.Hooks.WorkspaceHistory
 import XMonad.Hooks.EwmhDesktops
-import XMonad.Hooks.ManageHelpers (isFullscreen, doFullFloat)
+import XMonad.Hooks.ManageHelpers -- (isFullscreen, doFullFloat)
 import XMonad.Hooks.SetWMName
 
 import XMonad.Layout.Spacing
@@ -234,7 +235,7 @@ instance UrgencyHook LibNotifyUrgencyHook where
 myManageHook = composeAll
     [ title     =? "Mozilla Firefox"               --> doShift (myWorkspaces !! 0 )
     , (className =? "Firefox" <&&> resource =? "Dialog") --> doFloat
-    , className =? "cmd"                           --> hasBorder False ]
+    , (stringProperty "WM_WINDOW_ROLE" =? "GtkFileChooserDialog") --> doRectFloat (W.RationalRect (1 % 2) (1 % 2) (1 % 2) (1 % 2)) ]
 ------------------------------------------------------------------------
 -- Event handling
 
