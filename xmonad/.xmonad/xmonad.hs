@@ -277,7 +277,7 @@ main = do
   xmproc1 <- spawnPipe "xmobar -x 1 /home/lsenior/.config/xmobar/xmobarrc1"
   xmonad $ ewmh defaults
       { manageHook = (isFullscreen --> doFullFloat ) <+> myManageHook <+> manageDocks
-      , handleEventHook = docksEventHook
+      , handleEventHook = docksEventHook <+> fullscreenEventHook
       , logHook = workspaceHistoryHook <+> myLogHook <+> dynamicLogWithPP xmobarPP
           { ppOutput = \x -> hPutStrLn xmproc0 x >> hPutStrLn xmproc1 x
           , ppCurrent = xmobarColor "#98be65" "" . wrap "[" "]"
