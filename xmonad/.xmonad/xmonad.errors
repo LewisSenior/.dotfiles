@@ -1,0 +1,5 @@
+
+xmonad.hs:125:61: error: Variable not in scope: help :: [Char]
+    |
+125 |     , ((modm .|. shiftMask, xK_slash ), spawn ("echo \"" ++ help ++ "\" | xmessage -file -"))
+    |                                                             ^^^^
