@@ -31,13 +31,15 @@ vim.lsp.handlers["textDocument/publishDiagnostics"] = vim.lsp.with(
 )
 EOF
 
-" Using Lua functions
+" Shortkeys for telescope using Lua functions :)
 nnoremap <leader>ff <cmd>lua require('telescope.builtin').find_files()<cr>
 nnoremap <leader>fg <cmd>lua require('telescope.builtin').live_grep()<cr>
 nnoremap <leader>fb <cmd>lua require('telescope.builtin').buffers()<cr>
 nnoremap <leader>fh <cmd>lua require('telescope.builtin').help_tags()<cr>
+
+" Git fugative keys
 nnoremap <leader>gs <cmd>G<cr>
-nnoremap <leader>ga <cmd>Git add %<cr>
+nnoremap <leader>ga <cmd>w!<cr><cmd>Git add %<cr>
 nnoremap <leader>gc <cmd>Git commit<cr>
 
 if !exists('g:highlighter#syntax_cs')
