@@ -32,7 +32,7 @@ vim.lsp.handlers["textDocument/publishDiagnostics"] = vim.lsp.with(
 EOF
 
 " Shortkeys for telescope using Lua functions :)
-nnoremap <leader>ff <cmd>lua require('telescope.builtin').find_files()<cr>
+nnoremap <leader>ff <cmd>Telescope find_files hidden=true<cr>
 nnoremap <leader>fg <cmd>lua require('telescope.builtin').live_grep()<cr>
 nnoremap <leader>fb <cmd>lua require('telescope.builtin').buffers()<cr>
 nnoremap <leader>fh <cmd>lua require('telescope.builtin').help_tags()<cr>
@@ -67,7 +67,6 @@ colorscheme gruvbox
 
 set relativenumber
 set number
-let NERDTreeMapActivateNode='l'
 let g:WebDevIconsNerdTreeAfterGlyphPadding = '  '
 
 
@@ -101,7 +100,8 @@ tnoremap <Esc> <C-\><C-n>
 tnoremap :q! <C-\><C-n>:q!<CR>
 
 
-
+let NERDTreeShowHidden=1
+let NERDTreeMapActivateNode='l'
 nnoremap <leader>n :NERDTreeFocus<CR>
 nnoremap <leader>t :NERDTreeToggle<CR>
 nnoremap('<leader>fu', 'Telescope lsp_references')
