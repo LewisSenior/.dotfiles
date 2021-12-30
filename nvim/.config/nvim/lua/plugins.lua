@@ -21,12 +21,6 @@ use {
 --Code debugging, Breakpoints etc
   use 'puremourning/vimspector'
 
---Asyncrounous linting and error checking (NOT WORKING)
---  use 'dense-analysis/ale'
-
---Fancy starting screen (CHECK)
---  use 'mhinz/vim-startify'
-
 --Themeing
   use 'morhetz/gruvbox'
   use 'vim-airline/vim-airline'
