@@ -41,6 +41,7 @@ nnoremap <leader>fh <cmd>lua require('telescope.builtin').help_tags()<cr>
 nnoremap <leader>gs <cmd>G<cr>
 nnoremap <leader>ga <cmd>w!<cr><cmd>Git add %<cr>
 nnoremap <leader>gc <cmd>Git commit<cr>
+nnoremap <leader>gp <cmd>git push<cr>
 
 if !exists('g:highlighter#syntax_cs')
   let g:highlighter#syntax_cs = [
