@@ -118,7 +118,7 @@ myKeys conf@(XConfig {XMonad.modMask = modm}) = M.fromList $
     , ((modm              , xK_q     ), spawn "xmonad --recompile; xmonad --restart")
 
     -- Screenshots
-    , ((modm              , xK_Print ), spawn "spectacle")
+    , ((modm              , xK_Print ), spawn "flameshot gui")
     ]
     ++
 
