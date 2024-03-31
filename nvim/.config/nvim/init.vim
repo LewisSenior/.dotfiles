@@ -1,4 +1,7 @@
+luafile ~/.config/nvim/myconfig.lua
 lua require('plugins')
+luafile ~/.config/nvim/lua/hjklsynner/init.lua
+
 let g:vimspector_enable_mappings = 'HUMAN'
 let g:highlighter#auto_update = 2
 let g:highlighter#project_root_signs = ['.git']
@@ -11,7 +14,6 @@ set hidden
 filetype indent plugin on
 syntax enable
 
-luafile ~/.config/nvim/myconfig.lua
 
 lua << EOF
 vim.lsp.handlers["textDocument/publishDiagnostics"] = vim.lsp.with(
