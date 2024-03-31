@@ -32,7 +32,7 @@ use {
 --  use 'ervandew/supertab'
 
 --Bracket Pairing
-  use 'tmsvg/pear-tree'
+--  use 'tmsvg/pear-tree'
   use 'drewtempelmeyer/palenight.vim'
 --  use 'prabirshrestha/asyncomplete.vim'
 --  use 'majutsushi/tagbar' -- Lays out the structure of classes etc - could be useful
