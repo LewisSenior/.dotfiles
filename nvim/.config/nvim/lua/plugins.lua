@@ -6,10 +6,10 @@ return require('packer').startup(function()
 
 --Launches Omnisharp
   use {'neovim/nvim-lspconfig',
-  'williamboman/nvim-lsp-installer'}-- native LSP support
+  'williamboman/mason.nvim'}-- native LSP support
   use 'hrsh7th/nvim-cmp' -- autocompletion framework
   use 'hrsh7th/cmp-nvim-lsp' -- LSP autocompletion provider
-
+  use 'williamboman/mason-lspconfig.nvim'
 -- Fuzzy finder
 use {
   'nvim-telescope/telescope.nvim',
@@ -76,23 +76,11 @@ cmp.setup {
 --  end,
 --  cmd = { "/home/lsenior/.omnisharp/run", "--languageserver" , "--hostPID", tostring(pid) },
 --}
-
-local lsp_installer = require("nvim-lsp-installer")
-
--- Register a handler that will be called for all installed servers.
--- Alternatively, you may also register handlers on specific server instances instead (see example below).
-lsp_installer.on_server_ready(function(server)
-    local opts = {}
-
-    -- (optional) Customize the options passed to the server
-    -- if server.name == "tsserver" then
-    --     opts.root_dir = function() ... end
-    -- end
-
-    -- This setup() function is exactly the same as lspconfig's setup function.
-    -- Refer to https://github.com/neovim/nvim-lspconfig/blob/master/doc/server_configurations.md
-    server:setup(opts)
-end)
+--
+require("mason").setup()
+require("mason-lspconfig").setup()
+require'lspconfig'.phpactor.setup{}
+require'lspconfig'.pyright.setup{}
 
 	use 'ThePrimeagen/vim-be-good'
 

@@ -42,6 +42,9 @@ nnoremap <leader>gs <cmd>G<cr>
 nnoremap <leader>ga <cmd>w!<cr><cmd>Git add %<cr>
 nnoremap <leader>gc <cmd>Git commit<cr>
 nnoremap <leader>gp <cmd>Git push<cr>
+nnoremap <leader>q  <cmd>q<cr>
+
+nnoremap <C-f> <cmd>silent !tmux neww tmux-sessionizer<CR>
 
 if !exists('g:highlighter#syntax_cs')
   let g:highlighter#syntax_cs = [
