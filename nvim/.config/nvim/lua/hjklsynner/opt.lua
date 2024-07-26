@@ -7,6 +7,6 @@ vim.o.ff='unix'
 vim.o.background='dark'
 vim.o.relativenumber = true
 vim.o.number = true
-
-
 vim.o.laststatus=2
+
+vim.opt.scrolloff = 10

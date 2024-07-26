@@ -19,3 +19,6 @@ eval "$(starship init zsh)"
 # Created by `pipx` on 2024-06-03 21:01:44
 export PATH="$PATH:/home/lewissenior/.local/bin"
 if [ -f "/home/lewissenior/.config/fabric/fabric-bootstrap.inc" ]; then . "/home/lewissenior/.config/fabric/fabric-bootstrap.inc"; fi
+
+alias pbcopy='xclip -selection clipboard'
+alias pbpaste='xclip -selection clipload -o'
