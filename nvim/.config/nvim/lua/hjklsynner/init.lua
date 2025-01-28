@@ -99,7 +99,7 @@ vim.keymap.set('n', '<leader>fh', builtin.help_tags, {})
 vim.keymap.set('n', '<leader>xx', ':Trouble diagnostics toggle<cr>', { noremap = true, silent = true })
 
 local cmp = require 'cmp'
-cmp.setup {
+cmp.setup ({
   mapping = {
     ['<Tab>'] = cmp.mapping.select_next_item(),
     ['<S-Tab>'] = cmp.mapping.select_prev_item(),
@@ -108,22 +108,96 @@ cmp.setup {
       select = true,
     })
   },
+  completion = {
+	  autocomplete = { require('cmp.types').cmp.TriggerEvent.TextChanged },
+  },
+  experimental = {
+      ghost_text = true, -- Shows suggestions inline as you type
+  },
   sources = {
     { name = 'nvim_lsp' },
-  }
-}
+	{ name = 'buffer' },
+	{ name = 'path' }
+  },
+  formatting = {
+	  format = function(entry, item)
+		  item.menu = ({
+			  nvim_lsp = '[LSP]',
+			  buffer = '[Buffer]',
+			  path = '[Path]',
+		  })[entry.source.name]
+		  return item
+	  end,
+  },
+  preselect = cmp.PreselectMode.Item,
+})
+
 
 require("mason").setup()
 require("mason-lspconfig").setup()
 
-require'lspconfig'.phpactor.setup{}
+local capabilities = require('cmp_nvim_lsp').default_capabilities()
+require'lspconfig'.intelephense.setup{
+	capabilities = capabilities,
+}
+--require'lspconfig'.phpactor.setup{
+--	capabilities = capabilities,
+--}
 require'lspconfig'.basedpyright.setup{
 settings = { 
-	basedpyright = {
+		basedpyright = {
 		analysis = {
 			typeCheckingMode = "standard"
 		}
 	}
 }
 }
-require'lspconfig'.omnisharp.setup{}
+require'lspconfig'.bashls.setup{
+	on_attach = on_attach,
+	flags = {
+    	debounce_text_changes = 150,
+  	},
+  	settings = {
+    	bashIde = {
+			globPattern = "**/*.?(e)x?(a)m?(p)l?(e)", -- Optional: Customize glob patterns
+      		lintOnSave = true, -- Optional: Enable linting on save
+      		autoAddShebang = true, -- Optional: Automatically add shebang if missing
+    	}
+  	}
+}
+
+
+local harpoon = require("harpoon")
+
+harpoon:setup()
+
+vim.keymap.set("n", "<leader>a", function() harpoon:list():add() end)
+
+vim.keymap.set("n", "<C-j>", function() harpoon:list():select(1) end)
+vim.keymap.set("n", "<C-k>", function() harpoon:list():select(2) end)
+vim.keymap.set("n", "<C-l>", function() harpoon:list():select(3) end)
+vim.keymap.set("n", "<C-m>", function() harpoon:list():select(4) end)
+
+-- Toggle previous & next buffers stored within Harpoon list
+vim.keymap.set("n", "<leader>j", function() harpoon:list():prev() end)
+vim.keymap.set("n", "<leader>k", function() harpoon:list():next() end)
+
+local conf = require("telescope.config").values
+local function toggle_telescope(harpoon_files)
+    local file_paths = {}
+    for _, item in ipairs(harpoon_files.items) do
+        table.insert(file_paths, item.value)
+    end
+
+    require("telescope.pickers").new({}, {
+        prompt_title = "Harpoon",
+        finder = require("telescope.finders").new_table({
+            results = file_paths,
+        }),
+        previewer = conf.file_previewer({}),
+        sorter = conf.generic_sorter({}),
+    }):find()
+end
+
+vim.keymap.set("n", "<C-e>", function() toggle_telescope(harpoon:list()) end,
+    { desc = "Open harpoon window" })
