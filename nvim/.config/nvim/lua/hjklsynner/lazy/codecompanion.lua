@@ -1,3 +1,5 @@
+local secrets = require("hjklsynner.secrets")
+
 return {
   "olimorris/codecompanion.nvim",
   dependencies = {
@@ -53,13 +55,13 @@ return {
   		},
 		
       adapters = {
-	  	http =  {
+		http =  {
         	anthropic = function()
 				return require("codecompanion.adapters").extend("anthropic", {
           			env = {
-            			api_key = "REDACTED", -- Replace with your actual API key
+            			api_key = secrets.anthropic_api_key,
           			},
-        		})
+        			})
 				end,
 		}
 	}
