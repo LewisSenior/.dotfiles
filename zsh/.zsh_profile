@@ -1,5 +1,3 @@
-
-export PATH="/home/lewis/.local/bin/scripts:$PATH"
+export PATH="/home/lewis/.local/bin/scripts:/snap/bin:$PATH"
 
 bindkey -s  "tmux-sessionizer\n"
-
