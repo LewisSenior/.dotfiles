@@ -137,33 +137,37 @@ require("mason").setup()
 require("mason-lspconfig").setup()
 
 local capabilities = require('cmp_nvim_lsp').default_capabilities()
-require'lspconfig'.intelephense.setup{
-	capabilities = capabilities,
+vim.lsp.config['intelephense'] = {
+  capabilities = capabilities,
+  on_attach = on_attach,
+  autostart = true,
 }
---require'lspconfig'.phpactor.setup{
---	capabilities = capabilities,
---}
-require'lspconfig'.basedpyright.setup{
-settings = { 
-		basedpyright = {
-		analysis = {
-			typeCheckingMode = "standard"
-		}
-	}
+
+vim.lsp.config['basedpyright'] = {
+  capabilities = capabilities,
+  on_attach = on_attach,
+  autostart = true,
+  settings = {
+    basedpyright = {
+      analysis = {
+        typeCheckingMode = "standard",
+      },
+    },
+  },
 }
-}
-require'lspconfig'.bashls.setup{
-	on_attach = on_attach,
-	flags = {
-    	debounce_text_changes = 150,
-  	},
-  	settings = {
-    	bashIde = {
-			globPattern = "**/*.?(e)x?(a)m?(p)l?(e)", -- Optional: Customize glob patterns
-      		lintOnSave = true, -- Optional: Enable linting on save
-      		autoAddShebang = true, -- Optional: Automatically add shebang if missing
-    	}
-  	}
+
+vim.lsp.config['bashls'] = {
+  capabilities = capabilities,
+  on_attach = on_attach,
+  autostart = true,
+  flags = { debounce_text_changes = 150 },
+  settings = {
+    bashIde = {
+      globPattern = "**/*.?(e)x?(a)m?(p)l?(e)",
+      lintOnSave = true,
+      autoAddShebang = true,
+    },
+  },
 }
 
 
