@@ -1,0 +1,8 @@
+# Secrets - DO NOT COMMIT
+lua/hjklsynner/secrets.lua
+secrets.lua
+
+# Environment files
+.env
+.env.local
+*.secret
