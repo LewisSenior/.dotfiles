@@ -56,7 +56,7 @@ env:
   #
   # Values for `decorations`:
   #     - full: Borders and title bar
-  #     - none: Neither borders nor title bar
+  #     - none: Neither borders nor title baralac
   #
   # Values for `decorations` (macOS only):
   #     - transparent: Title bar, transparent background and title bar buttons
@@ -419,16 +419,12 @@ font:
 #   - (Linux/BSD) user login shell
 #   - (Windows) powershell
 shell:
-  program: /bin/bash
-  args:
-     - -l
-     - -c
-     - "tmux attach || tmux"
+  program: zsh
 # Startup directory
 #
 # Directory the shell is started in. If this is unset, or `None`, the working
 # directory of the parent process will be used.
-#working_directory: None
+working_directory: None
 
 # Send ESC (\x1b) before characters when alt is pressed.
 #alt_send_esc: true
