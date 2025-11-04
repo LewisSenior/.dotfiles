@@ -16,6 +16,20 @@ source ~/.zsh_profile
 
 eval "$(starship init zsh)"
 
+# Close this shell if another Alacritty window is already open
+if [[ "$(ps -o comm= -p $PPID 2>/dev/null)" == "alacritty" ]]; then
+  if (( $(pgrep -x alacritty | wc -l) > 1 )); then
+    # Optional: message for debugging
+    # echo "Another Alacritty window is already running; exiting."
+    exit
+  fi
+fi
+
+# Start tmux-sessionizer in ~/tmp if not already in tmux and only once per session
+if [[ -z "$TMUX" ]] && [[ $- == *i* ]]; then
+  tmux-sessionizer ~/tmp
+fi
+
 # Created by `pipx` on 2024-06-03 21:01:44
 export PATH="$PATH:/home/lewissenior/.local/bin:/opt/nvim-linux-x86_64/bin:/opt/Postman:/usr/sbin"
 export HISTTIMEFORMAT="%F %T "
