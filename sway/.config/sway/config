@@ -27,6 +27,8 @@ exec_always kanshi
 #exec_always --no-startup-id /usr/share/xdg-desktop-portal -r
 exec_always systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP
 exec_always dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=sway
+exec_always waybar
+exec_always ~/.local/bin/scripts/callmix-setup.sh
 
 exec firefox
 exec 3cx
@@ -55,6 +57,16 @@ for_window [class="1Password"] move scratchpad
 for_window [title="Picture-in-Picture"] sticky enable, floating enable, resize set 503 500, move position 2243 0
 for_window [app_id="chrome-mfhcipaolaoncdninlpilgbnoidcmeij-Default"] move to workspace 10
 for_window [app_id="chrome-cifhbcnohmdccbgoicgdjpfamggdegmo-Default"] move to workspace 10
+
+#
+#No titlebars
+#
+default_border none
+for_window [title="^.*"] title_format ""
+#default_border normal 0
+default_floating_border normal 0
+
+
 ### Idle configuration
 #
 # Example configuration:
@@ -248,8 +260,8 @@ bindsym F1 exec --no-startup-id pactl set-sink-mute @DEFAULT_SINK@ toggle
 # Status Bar:
 #
 # Read `man 5 sway-bar` for more information about this section.
-bar {
-	status_command i3blocks
-}
+#bar {
+#	status_command i3blocks
+#}
 
 include /etc/sway/config.d/*
