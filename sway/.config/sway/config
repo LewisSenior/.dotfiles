@@ -22,19 +22,19 @@ set $menu wofi --show run
 
 include /etc/sway/config-vars.d/*
 
-exec_always autotiling
+#exec_always autotiling
 exec_always kanshi
 #exec_always --no-startup-id /usr/share/xdg-desktop-portal -r
-exec_always systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP
-exec_always dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=sway
 exec_always waybar
 exec_always ~/.local/bin/scripts/callmix-setup.sh
+#exec_always systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP
+#exec_always dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=sway
 
 exec firefox
-exec 3cx
-exec teams
+#exec 3cx
+#exec teams
 exec $term
-exec 1password
+#exec 1password
 
 smart_gaps inverse_outer
 gaps horizontal 500
@@ -42,7 +42,7 @@ gaps horizontal 500
 ### Output configuration
 #
 # Default wallpaper (more resolutions are available in /usr/share/backgrounds/sway/)
-output * bg /usr/share/backgrounds/sway/otherworldly_earth_nasa_ISS064-E-29444.jpg fill
+#output * bg /usr/share/backgrounds/sway/otherworldly_earth_nasa_ISS064-E-29444.jpg fill
 #
 # Example configuration:
 #

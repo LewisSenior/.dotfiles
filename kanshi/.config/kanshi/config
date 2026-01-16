@@ -10,6 +10,9 @@ profile home2 {
 	output eDP-1 disable
 	output "Philips Consumer Electronics Company 32M2N6800M AU82432000986" mode 3840x2160 enable position 0,0 scale 1.4
 }
+profile workstation {
+	output "Philips Consumer Electronics Company 32M2N6800M 1322131231233" mode 3840x2160 enable position 0,0 scale 1.4
+}
 profile work {
 	output eDP-1 disable
 	output "Goldstar Company Ltd LG ULTRAWIDE 411NTDV14834" mode 3440x1440 enable position 0,0 scale 1
