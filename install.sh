@@ -11,6 +11,7 @@ if grep -qi '^ID=arch' /etc/os-release; then
 	firefox \
 	fzf \
 	git \
+	github-cli \
 	go \
 	kanshi \
 	man-pages \
