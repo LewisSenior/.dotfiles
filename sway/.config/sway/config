@@ -36,6 +36,12 @@ exec firefox
 exec $term
 #exec 1password
 
+# Notification Daemon
+exec_always swaync
+
+# Toggle control center
+bindsym $mod+Shift+n exec swaync-client -t -sw
+
 smart_gaps inverse_outer
 gaps horizontal 500
 
