@@ -6,6 +6,32 @@
       "url": "https://mcp.context7.com/mcp",
       "enabled": true
     },
+    "github": {
+      "type": "remote",
+      "url": "https://api.githubcopilot.com/mcp",
+      "headers": {
+        "Authorization": "Bearer {env:GITHUB_TOKEN}"
+      },
+      "enabled": true
+    },
+    "pm-hq": {
+      "type": "remote",
+      "url": "https://hq.pinemedia.net/mcp",
+      "enabled": true
+    },
+    "1password": {
+      "type": "local",
+      "command": ["node", "/home/lewis/PineMedia/1password-mcp/dist/index.js"],
+      "enabled": false
+    },
+    "postgres": {
+      "type": "local",
+      "command": ["docker", "run", "-i", "--rm", "-e", "DATABASE_URI", "crystaldba/postgres-mcp", "--access-mode=restricted"],
+      "environment": {
+        "DATABASE_URI": "{env:POSTGRES_MCP_URI}"
+      },
+      "enabled": false
+    },
     "fetch": {
       "type": "local",
       "command": ["docker", "run", "-i", "--rm", "mcp/fetch"],
