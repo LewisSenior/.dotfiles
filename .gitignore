@@ -3,3 +3,10 @@
 .env.local
 *.secret
 .git
+
+# Test and log files
+*.cast
+*.log
+*.o.log
+.gh-config/hosts.yml
+.gh-config/
