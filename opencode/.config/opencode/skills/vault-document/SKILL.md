@@ -1,6 +1,6 @@
 ---
-name: vault-documentation
-description: Automatically document technical topics and CLI tools in the Obsidian vault using the note template
+name: vault-document
+description: Create new documentation notes in the Obsidian vault using the note template
 compatibility: opencode
 metadata:
   audience: developer
@@ -9,7 +9,7 @@ metadata:
 
 ## What I do
 
-When working on any technical topic, tool, or CLI command that isn't already documented in this vault, I automatically create a new note using the template system.
+When something isn't already documented in the vault, I create a new note using the template system.
 
 ## When to use me
 
@@ -19,6 +19,7 @@ Use this skill whenever:
 - You learn a new concept, protocol, or system
 - You work with any tool that should be documented for future reference
 - You mention something worth remembering that doesn't have a note yet
+- After using vault-query, you confirm no relevant notes exist
 
 ## Workflow
 
