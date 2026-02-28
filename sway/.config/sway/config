@@ -21,6 +21,7 @@ set $term alacritty
 set $menu wofi --show run
 
 include /etc/sway/config-vars.d/*
+include /etc/sway/config.d/*
 
 #exec_always autotiling
 exec_always kanshi
@@ -31,8 +32,8 @@ exec_always ~/.local/bin/scripts/callmix-setup.sh
 #exec_always dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=sway
 
 exec firefox
-#exec 3cx
-#exec teams
+exec 3cx
+exec teams
 exec $term
 #exec 1password
 
@@ -269,5 +270,3 @@ bindsym F1 exec --no-startup-id pactl set-sink-mute @DEFAULT_SINK@ toggle
 #bar {
 #	status_command i3blocks
 #}
-
-include /etc/sway/config.d/*
