@@ -3,3 +3,7 @@
 bindkey -s  "tmux-sessionizer\n"
 bindkey -s  "tmux-sessionizer ~/\n"
 bindkey -s  "tmux-sessionizer ~/tmp\n"
+
+tmux-session-switcher-widget() { tmux-session-switcher; zle reset-prompt; }
+zle -N tmux-session-switcher-widget
+bindkey ^W tmux-session-switcher-widget
