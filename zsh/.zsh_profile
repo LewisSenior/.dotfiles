@@ -1,9 +1,6 @@
 #export PATH="/home/lewis/.local/bin/scripts:/snap/bin:$PATH"
 
-bindkey -s  "tmux-sessionizer\n"
-bindkey -s  "tmux-sessionizer ~/\n"
-bindkey -s  "tmux-sessionizer ~/tmp\n"
-
-tmux-session-switcher-widget() { tmux-session-switcher; zle reset-prompt; }
-zle -N tmux-session-switcher-widget
-bindkey ^W tmux-session-switcher-widget
+# Set tmux window name to the command being run
+if [[ -n "$TMUX" ]]; then
+    preexec() { printf '\033k%s\033\\' "${1%% *}"; }
+fi

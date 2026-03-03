@@ -25,9 +25,15 @@ if [[ "$(ps -o comm= -p $PPID 2>/dev/null)" == "alacritty" ]]; then
   fi
 fi
 
-# Start tmux-sessionizer in ~/tmp if not already in tmux and only once per session
+# Always re-enter tmux if not already in it
 if [[ -z "$TMUX" ]] && [[ $- == *i* ]]; then
-  tmux-sessionizer ~/tmp
+  while true; do
+    if tmux list-sessions &>/dev/null; then
+      tmux attach-session
+    else
+      tmux-sessionizer ~/tmp
+    fi
+  done
 fi
 
 # Created by `pipx` on 2024-06-03 21:01:44

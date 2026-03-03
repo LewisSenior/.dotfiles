@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+
+tmux list-windows -F '#{window_index} #{window_name}' | while read -r idx name; do
+    if [[ "$name" == ~* ]]; then
+        tmux kill-window -t "$idx"
+    fi
+done

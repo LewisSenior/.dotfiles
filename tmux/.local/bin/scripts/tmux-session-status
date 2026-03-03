@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+
+tmux list-sessions -F '#{session_name}:#{?session_attached,1,0}' | while IFS=: read -r name attached; do
+    if [ "$attached" = "1" ]; then
+        printf '#[fg=#282828,bg=#5eacd3,bold] %s #[default] ' "$name"
+    else
+        printf '#[fg=#888888] %s #[default] ' "$name"
+    fi
+done

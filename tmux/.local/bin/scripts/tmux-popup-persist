@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+
+# Runs a command in a tmux popup. When the popup is closed,
+# the command continues running in a new background window.
+
+cmd="$1"
+shift
+args="$*"
+
+current_window=$(tmux display-message -p '#{window_name}')
+
+cleanup() {
+    tmux new-window -d -n "$cmd:$args" "$cmd $args"
+    tmux rename-window "$current_window"
+}
+trap cleanup EXIT
+
+$cmd $args
