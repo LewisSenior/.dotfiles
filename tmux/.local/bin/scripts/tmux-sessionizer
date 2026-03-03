@@ -1,25 +1,42 @@
 #!/usr/bin/env bash
 
 if [[ $# -eq 1 ]]; then
-    selected=$1
+    selected="dir $1"
 else
-    selected=$(find -L ~/PineMedia ~/cyberscape ~/.dotfiles ~/ -mindepth 1 -maxdepth 1 -type d | fzf)
+    active=$(tmux list-windows -a -F 'win:#{session_name}:#{window_index} #{session_name}/#{window_name}' 2>/dev/null | awk '{printf "\033[32m* %s\033[0m %s\n", $2, $1}')
+    dirs=$(find -L ~/PineMedia ~/cyberscape ~/.dotfiles ~/ -mindepth 1 -maxdepth 1 -type d 2>/dev/null | while read -r d; do echo "${d/#$HOME/\~} $d"; done)
+
+    selected=$(printf '%s\n%s' "$active" "$dirs" | fzf --prompt="» " --with-nth=1..-2 --delimiter=' ' --ansi)
 fi
 
 if [[ -z $selected ]]; then
     exit 0
 fi
 
-selected_name=$(basename "$selected" | tr . _)
-tmux_running=$(pgrep tmux)
+hidden=$(echo "$selected" | sed 's/\x1b\[[0-9;]*m//g' | awk '{print $NF}')
 
-if [[ -z $TMUX ]] && [[ -z $tmux_running ]]; then
-    tmux new-session -s $selected_name -c $selected
-    exit 0
+if [[ "$hidden" == win:* ]]; then
+    target=$(echo "$hidden" | sed 's/^win://')
+    if [[ -z $TMUX ]]; then
+        tmux attach-session -t "$target"
+    else
+        tmux switch-client -t "$target"
+        tmux refresh-client -S
+    fi
+else
+    dir="$hidden"
+    selected_name=$(basename "$dir" | tr . _)
+    tmux_running=$(pgrep tmux)
+
+    if [[ -z $TMUX ]] && [[ -z $tmux_running ]]; then
+        tmux new-session -s "$selected_name" -c "$dir"
+        exit 0
+    fi
+
+    if ! tmux has-session -t="$selected_name" 2>/dev/null; then
+        tmux new-session -ds "$selected_name" -c "$dir"
+    fi
+
+    tmux switch-client -t "$selected_name"
+    tmux refresh-client -S
 fi
-
-if ! tmux has-session -t=$selected_name 2> /dev/null; then
-    tmux new-session -ds $selected_name -c $selected
-fi
-
-tmux switch-client -t $selected_name

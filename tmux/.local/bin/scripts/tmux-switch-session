@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+n="${1:-1}"
+session=$(tmux list-sessions -F '#{session_name}' | sed -n "${n}p")
+
+if [[ -n "$session" ]]; then
+    tmux switch-client -t "$session"
+fi
