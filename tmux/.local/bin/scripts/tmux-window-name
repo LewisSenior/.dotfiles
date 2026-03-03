@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+
+adjectives=(swift bold calm dark keen wild free warm cool sharp bright quick slow deep fast)
+nouns=(fox owl wolf bear hawk lynx crow seal pike dart flame ridge creek stone forge)
+
+adj=${adjectives[$((RANDOM % ${#adjectives[@]}))]}
+noun=${nouns[$((RANDOM % ${#nouns[@]}))]}
+
+tmux rename-window "~${adj}-${noun}"

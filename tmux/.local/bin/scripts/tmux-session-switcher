@@ -4,14 +4,17 @@ if ! tmux list-sessions &>/dev/null; then
     exit 0
 fi
 
-selected=$(tmux list-sessions -F '#{session_name}' | fzf)
+selected=$(tmux list-windows -a -F '#{session_name}:#{window_index} #{session_name}/#{window_name}' | fzf --prompt="switch: " --with-nth=2 --delimiter=' ')
 
 if [[ -z $selected ]]; then
     exit 0
 fi
 
+target=$(echo "$selected" | awk '{print $1}')
+
 if [[ -z $TMUX ]]; then
-    tmux attach-session -t "$selected"
+    tmux attach-session -t "$target"
 else
-    tmux switch-client -t "$selected"
+    tmux switch-client -t "$target"
+    tmux refresh-client -S
 fi
