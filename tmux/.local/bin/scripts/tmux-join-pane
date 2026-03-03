@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+
+# Pick a window from the current session to join as a pane
+current=$(tmux display-message -p '#{window_index}')
+
+selected=$(tmux list-windows -F '#{window_index} #{window_name}' | \
+    awk -v cur="$current" '$1 != cur {printf "\033[33m%s\033[0m %s\n", $1, $2}' | \
+    fzf --prompt="join: " --ansi)
+
+if [[ -z $selected ]]; then
+    exit 0
+fi
+
+idx=$(echo "$selected" | sed 's/\x1b\[[0-9;]*m//g' | awk '{print $1}')
+
+direction="${1:--v}"
+tmux join-pane -s ":$idx" "$direction"
