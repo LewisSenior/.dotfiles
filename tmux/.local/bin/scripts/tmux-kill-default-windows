@@ -2,6 +2,8 @@
 
 tmux list-windows -F '#{window_index} #{window_name}' | while read -r idx name; do
     if [[ "$name" == ~* || "$name" == mtr:* || "$name" == ping:* ]]; then
-        tmux kill-window -t "$idx"
+        echo "$idx"
     fi
+done | sort -rn | while read -r idx; do
+    tmux kill-window -t "$idx"
 done
