@@ -3,7 +3,7 @@
 if [[ $# -eq 1 ]]; then
     selected="dir $1"
 else
-    active=$(tmux list-windows -a -F 'win:#{session_name}:#{window_index} #{session_name}/#{window_name}' 2>/dev/null | awk '{printf "\033[32m* %s\033[0m %s\n", $2, $1}')
+    active=$(tmux list-windows -a -F 'win:#{session_name}:#{window_index} #{session_name}/#{window_name}' 2>/dev/null | awk '{printf "\033[32m\\ %s\033[0m %s\n", $2, $1}')
     dirs=$(find -L ~/PineMedia ~/cyberscape ~/.dotfiles ~/ -mindepth 1 -maxdepth 1 -type d 2>/dev/null | while read -r d; do echo "${d/#$HOME/\~} $d"; done)
 
     selected=$(printf '%s\n%s' "$active" "$dirs" | fzf --prompt="» " --with-nth=1..-2 --delimiter=' ' --ansi)
