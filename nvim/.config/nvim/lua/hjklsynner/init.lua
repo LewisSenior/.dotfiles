@@ -17,6 +17,7 @@ vim.opt.shiftwidth=4
 vim.opt.encoding="UTF-8"
 vim.opt.hidden = true
 vim.opt.ma = true
+vim.opt.clipboard = "unnamedplus"
 vim.cmd('filetype indent plugin on')
 vim.cmd('syntax enable')
 
