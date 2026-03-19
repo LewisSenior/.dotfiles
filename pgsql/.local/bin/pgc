@@ -1,0 +1,472 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/pgc"
+CONFIG_FILE="$CONFIG_DIR/servers.json"
+CACHE_DIR="${XDG_RUNTIME_DIR:?XDG_RUNTIME_DIR must be set}/pgc-cache"
+CACHE_TTL="${PGC_CACHE_TTL:-300}"  # seconds, default 5 min (0 to disable)
+
+mkdir -p "$CONFIG_DIR"
+mkdir -p "$CACHE_DIR" && chmod 700 "$CACHE_DIR"
+[ -f "$CONFIG_FILE" ] || echo '[]' > "$CONFIG_FILE"
+
+usage() {
+  cat <<'EOF'
+pgc - PostgreSQL connection manager (1Password-backed)
+
+Servers are stored as aliases pointing to 1Password Database items.
+All credentials are fetched from 1Password at connect time via `op`.
+
+Usage:
+  pgc                       Interactive server selection (fzf)
+  pgc <name>                Connect to a named server (interactive psql)
+  pgc <name> -- -c 'SQL'    Run a single query non-interactively
+  pgc add                   Add a new server alias (interactive with fzf)
+  pgc ls                    List saved servers
+  pgc rm <name>             Remove a server
+  pgc edit <name>           Change the 1Password item reference
+  pgc show <name>           Show connection details (fetched from 1Password)
+  pgc uri <name>            Print connection URI
+  pgc cache clear           Clear cached credentials
+
+Non-interactive usage (for scripts and LLM agents):
+  pgc add --name <alias> --op-item <id> --vault <vault> --env <production|testing>
+  pgc edit <name> --op-item <id> --vault <vault> --env <production|testing>
+  pgc ls --json             List servers as JSON array
+  pgc show <name> --json    Show connection details as JSON
+
+Extra args after -- are passed through to psql:
+  pgc prod -- -c 'SELECT count(*) FROM users'
+  pgc prod -- -A -t -c 'SELECT version()'
+
+1Password item fields used (standard Database template):
+  server, port, database, username, password
+
+Add items in 1Password as "Database" type for best results.
+
+Credential cache:
+  Fetched credentials are cached in \$XDG_RUNTIME_DIR/pgc-cache (RAM-backed
+  tmpfs) for 5 minutes to avoid repeated 1Password prompts.
+  Set PGC_CACHE_TTL=0 to disable. Run 'pgc cache clear' to flush.
+EOF
+}
+
+_get() {
+  jq -e --arg n "$1" '.[] | select(.name == $n)' "$CONFIG_FILE"
+}
+
+_tmux_env_set() {
+  [ -n "${TMUX:-}" ] || return 0
+  local label="$1" env_type="$2"
+  tmux set-option -p @env_host "$label"
+  tmux set-option -p @env_type "$env_type"
+}
+
+_tmux_env_clear() {
+  [ -n "${TMUX:-}" ] || return 0
+  tmux set-option -pu @env_type
+  tmux set-option -pu @env_host
+}
+
+_cache_key() {
+  echo "$1${2:+_$2}" | sha256sum | cut -d' ' -f1
+}
+
+_cache_get() {
+  local key="$1" file="$CACHE_DIR/$key"
+  [ "$CACHE_TTL" -eq 0 ] 2>/dev/null && return 1
+  [ -f "$file" ] || return 1
+  local age=$(( $(date +%s) - $(stat -c %Y "$file") ))
+  [ "$age" -lt "$CACHE_TTL" ] || { rm -f "$file"; return 1; }
+  cat "$file"
+}
+
+_cache_put() {
+  local key="$1"
+  [ "$CACHE_TTL" -eq 0 ] 2>/dev/null && return 0
+  cat > "$CACHE_DIR/$key"
+  chmod 600 "$CACHE_DIR/$key"
+}
+
+_cache_clear() {
+  rm -f "$CACHE_DIR"/*
+  echo "Cache cleared."
+}
+
+_op_ensure_session() {
+  if op whoami &>/dev/null; then
+    return 0
+  fi
+  echo "Signing in to 1Password..." >&2
+  op signin 2>&1 || {
+    echo "Failed to sign in to 1Password." >&2
+    return 1
+  }
+}
+
+_op_fetch() {
+  local op_item="$1" vault="${2:-}"
+  local key
+  key=$(_cache_key "$op_item" "$vault")
+
+  local cached
+  if cached=$(_cache_get "$key"); then
+    echo "$cached"
+    return 0
+  fi
+
+  _op_ensure_session || return 1
+  local args=(op item get "$op_item" --format json)
+  [ -n "$vault" ] && args+=(--vault "$vault")
+  local item_json
+  item_json=$("${args[@]}" 2>&1) || {
+    echo "Failed to fetch from 1Password: $item_json" >&2
+    return 1
+  }
+  echo "$item_json" | _cache_put "$key"
+  echo "$item_json"
+}
+
+_op_field() {
+  local item_json="$1" field="$2" default="${3:-}"
+  local val
+  val=$(echo "$item_json" | jq -r --arg f "$field" \
+    '(.fields // [])[] | select(.label == $f or .id == $f) | .value // empty' | head -1)
+  echo "${val:-$default}"
+}
+
+_resolve() {
+  local name="$1"
+  local cfg
+  cfg=$(_get "$name") || { echo "Server '$name' not found. Run 'pgc ls' to see saved servers." >&2; return 1; }
+
+  local op_item vault
+  op_item=$(echo "$cfg" | jq -r '.op_item')
+  vault=$(echo "$cfg" | jq -r '.vault // ""')
+
+  local item_json
+  item_json=$(_op_fetch "$op_item" "$vault") || return 1
+
+  local host port db user pass
+  host=$(_op_field "$item_json" "server")
+  port=$(_op_field "$item_json" "port" "5432")
+  db=$(_op_field "$item_json" "database")
+  user=$(_op_field "$item_json" "username")
+  pass=$(_op_field "$item_json" "password")
+
+  jq -n \
+    --arg host "$host" \
+    --arg port "$port" \
+    --arg db "$db" \
+    --arg user "$user" \
+    --arg pass "$pass" \
+    '{host: $host, port: $port, db: $db, user: $user, pass: $pass}'
+}
+
+_connect() {
+  local name="$1"; shift
+  local cfg
+  cfg=$(_get "$name") || exit 1
+  local env_type
+  env_type=$(echo "$cfg" | jq -r '.env // "production"' | tr '[:lower:]' '[:upper:]')
+
+  local srv
+  srv=$(_resolve "$name") || exit 1
+
+  local host port db user pass
+  host=$(echo "$srv" | jq -r '.host')
+  port=$(echo "$srv" | jq -r '.port')
+  db=$(echo "$srv" | jq -r '.db')
+  user=$(echo "$srv" | jq -r '.user')
+  pass=$(echo "$srv" | jq -r '.pass')
+
+  local args=(-h "$host" -p "$port")
+  [ -n "$user" ] && args+=(-U "$user")
+  [ -n "$db" ] && args+=(-d "$db")
+
+  local label="${host%%.*}"
+  [ -n "$db" ] && label="${label}/${db}"
+
+  [ -n "$pass" ] && export PGPASSWORD="$pass"
+
+  _cleanup() {
+    _tmux_env_clear
+    unset PGPASSWORD 2>/dev/null
+    trap - EXIT INT TERM HUP
+  }
+  trap _cleanup EXIT INT TERM HUP
+
+  echo "Connecting to $name ($user@$host:$port/$db) [$env_type]..." >&2
+  _tmux_env_set "$label" "$env_type"
+  command psql "${args[@]}" "$@"
+  _cleanup
+}
+
+_op_pick() {
+  _op_ensure_session || return 1
+  echo "Fetching Database and Server items from 1Password..." >&2
+  local items
+  items=$(op item list --categories Database,Server --format json 2>&1) || {
+    echo "Failed to list 1Password items: $items" >&2
+    return 1
+  }
+
+  local count
+  count=$(echo "$items" | jq 'length')
+  if [ "$count" -eq 0 ]; then
+    echo "No Database or Server items found in 1Password." >&2
+    return 1
+  fi
+
+  local choice
+  choice=$(echo "$items" | jq -r '.[] | "\(.id)\t\(.vault.name)\t\(.title)"' \
+    | column -t -s$'\t' -N "ID,VAULT,TITLE" \
+    | fzf --prompt="Select 1Password item> " --height=~40% --header-lines=1) || return 1
+
+  _OP_PICK_ID=$(echo "$choice" | awk '{print $1}')
+  _OP_PICK_VAULT=$(echo "$items" | jq -r --arg id "$_OP_PICK_ID" '.[] | select(.id == $id) | .vault.name')
+}
+
+_validate_env() {
+  case "$1" in
+    production|testing) echo "$1" ;;
+    prod|p) echo "production" ;;
+    test|dev|t|d) echo "testing" ;;
+    *) echo "Invalid environment: must be 'production' or 'testing'." >&2; return 1 ;;
+  esac
+}
+
+cmd_add() {
+  local name="" op_item="" vault="" env_type=""
+
+  # Parse flags for non-interactive use
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --name)     name="$2"; shift 2 ;;
+      --op-item)  op_item="$2"; shift 2 ;;
+      --vault)    vault="$2"; shift 2 ;;
+      --env)      env_type="$2"; shift 2 ;;
+      *) echo "Unknown flag: $1" >&2; exit 1 ;;
+    esac
+  done
+
+  # Interactive mode if flags not provided
+  if [ -z "$name" ]; then
+    read -rp "Name (alias): " name
+  fi
+  [ -z "$name" ] && { echo "Name required." >&2; exit 1; }
+  if _get "$name" &>/dev/null; then
+    echo "Server '$name' already exists. Use 'pgc edit $name' to change it." >&2; exit 1
+  fi
+
+  if [ -z "$op_item" ]; then
+    _op_pick || exit 1
+    op_item="$_OP_PICK_ID"
+    vault="$_OP_PICK_VAULT"
+  else
+    # Validate the item exists
+    echo "Verifying 1Password item..." >&2
+    _op_fetch "$op_item" "$vault" > /dev/null || exit 1
+  fi
+
+  if [ -z "$env_type" ]; then
+    read -rp "Environment (production/testing) [production]: " env_type
+    env_type="${env_type:-production}"
+  fi
+  env_type=$(_validate_env "$env_type") || exit 1
+
+  local entry
+  entry=$(jq -n --arg name "$name" --arg op_item "$op_item" --arg vault "${vault:-}" --arg env "$env_type" \
+    '{name: $name, op_item: $op_item, vault: $vault, env: $env}')
+
+  jq --argjson entry "$entry" '. + [$entry]' "$CONFIG_FILE" > "$CONFIG_FILE.tmp" \
+    && mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
+
+  local label="$op_item"
+  [ -n "${vault:-}" ] && label="$vault/$op_item"
+  echo "Added '$name' -> $label [$env_type]."
+}
+
+cmd_edit() {
+  local name="${1:?Usage: pgc edit <name>}"; shift
+  local cfg
+  cfg=$(_get "$name") || { echo "Server '$name' not found." >&2; exit 1; }
+
+  local cur_op_item cur_vault cur_env
+  cur_op_item=$(echo "$cfg" | jq -r '.op_item')
+  cur_vault=$(echo "$cfg" | jq -r '.vault // ""')
+  cur_env=$(echo "$cfg" | jq -r '.env // "production"')
+
+  local op_item="" vault="" env_type=""
+
+  # Parse flags for non-interactive use
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --op-item)  op_item="$2"; shift 2 ;;
+      --vault)    vault="$2"; shift 2 ;;
+      --env)      env_type="$2"; shift 2 ;;
+      *) echo "Unknown flag: $1" >&2; exit 1 ;;
+    esac
+  done
+
+  if [ -z "$op_item" ] && [ -z "$env_type" ]; then
+    # Fully interactive
+    echo "Select new 1Password item (Ctrl-C to keep current):" >&2
+    if _op_pick; then
+      op_item="$_OP_PICK_ID"
+      vault="$_OP_PICK_VAULT"
+    else
+      op_item="$cur_op_item"
+      vault="$cur_vault"
+    fi
+
+    read -rp "Environment (production/testing) [$cur_env]: " env_type
+    env_type="${env_type:-$cur_env}"
+  else
+    # Non-interactive: use flags or keep current values
+    op_item="${op_item:-$cur_op_item}"
+    vault="${vault:-$cur_vault}"
+    env_type="${env_type:-$cur_env}"
+
+    echo "Verifying 1Password item..." >&2
+    _op_fetch "$op_item" "$vault" > /dev/null || exit 1
+  fi
+
+  env_type=$(_validate_env "$env_type") || exit 1
+
+  jq --arg name "$name" --arg op_item "$op_item" --arg vault "$vault" --arg env "$env_type" \
+     'map(if .name == $name then {name: $name, op_item: $op_item, vault: $vault, env: $env} else . end)' \
+     "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
+
+  local label="$op_item"
+  [ -n "$vault" ] && label="$vault/$op_item"
+  echo "Updated '$name' -> $label [$env_type]."
+}
+
+cmd_ls() {
+  local json=false
+  [[ "${1:-}" == "--json" ]] && json=true
+
+  if [ "$(jq length "$CONFIG_FILE")" -eq 0 ]; then
+    if $json; then
+      echo '[]'
+    else
+      echo "No servers saved. Run 'pgc add' to add one." >&2
+    fi
+    return
+  fi
+
+  if $json; then
+    jq '[.[] | {name, env: (.env // "production"), vault: (.vault // ""), op_item}]' "$CONFIG_FILE"
+  else
+    jq -r '.[] | "\(.name)\t\(.env // "production")\t\(if (.vault // "") != "" then .vault + "/" else "" end)\(.op_item)"' "$CONFIG_FILE" \
+      | column -t -s$'\t' -N "NAME,ENV,1PASSWORD ITEM"
+  fi
+}
+
+cmd_rm() {
+  local name="${1:?Usage: pgc rm <name>}"
+  _get "$name" &>/dev/null || { echo "Server '$name' not found." >&2; exit 1; }
+  jq --arg n "$name" 'map(select(.name != $n))' "$CONFIG_FILE" > "$CONFIG_FILE.tmp" \
+    && mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
+  echo "Removed '$name'."
+}
+
+cmd_show() {
+  local name="" json=false
+  for arg in "$@"; do
+    case "$arg" in
+      --json) json=true ;;
+      *) name="$arg" ;;
+    esac
+  done
+  [ -z "$name" ] && { echo "Usage: pgc show <name> [--json]" >&2; exit 1; }
+
+  local cfg
+  cfg=$(_get "$name") || { echo "Server '$name' not found." >&2; exit 1; }
+
+  local op_item vault env_type
+  op_item=$(echo "$cfg" | jq -r '.op_item')
+  vault=$(echo "$cfg" | jq -r '.vault // ""')
+  env_type=$(echo "$cfg" | jq -r '.env // "production"')
+
+  local srv
+  srv=$(_resolve "$name") || exit 1
+
+  if $json; then
+    echo "$srv" | jq \
+      --arg name "$name" \
+      --arg env "$env_type" \
+      --arg op_item "$op_item" \
+      --arg vault "$vault" \
+      '{name: $name, env: $env, host, port, db, user, has_password: (.pass != ""), op_item: $op_item, vault: $vault}'
+  else
+    local label="$op_item"
+    [ -n "$vault" ] && label="$vault/$op_item"
+    echo "1Password item: $label"
+    echo "environment: $env_type"
+    echo "$srv" | jq '{host, port, db: .db, user} | to_entries[] | "\(.key): \(.value)"' -r
+    local has_pass
+    has_pass=$(echo "$srv" | jq -r 'if .pass != "" then "yes" else "no" end')
+    echo "password: (present: $has_pass)"
+  fi
+}
+
+cmd_uri() {
+  local name="${1:?Usage: pgc uri <name>}"
+  local srv
+  srv=$(_resolve "$name") || exit 1
+
+  local host port db user pass
+  host=$(echo "$srv" | jq -r '.host')
+  port=$(echo "$srv" | jq -r '.port')
+  db=$(echo "$srv" | jq -r '.db')
+  user=$(echo "$srv" | jq -r '.user')
+  pass=$(echo "$srv" | jq -r '.pass')
+
+  local userinfo=""
+  if [ -n "$user" ]; then
+    userinfo="$user"
+    [ -n "$pass" ] && userinfo="$userinfo:$pass"
+    userinfo="$userinfo@"
+  fi
+  echo "postgresql://${userinfo}${host}:${port}/${db}"
+}
+
+cmd_fzf() {
+  if [ "$(jq length "$CONFIG_FILE")" -eq 0 ]; then
+    echo "No servers saved. Run 'pgc add' to add one." >&2
+    exit 1
+  fi
+  local choice
+  choice=$(jq -r '.[] | "\(.name) \t \(.env // "production") \t \(if (.vault // "") != "" then .vault + "/" else "" end)\(.op_item)"' "$CONFIG_FILE" \
+    | column -t -s$'\t' \
+    | fzf --prompt="Select server> " --height=~40%) || exit 0
+  local name
+  name=$(echo "$choice" | awk '{print $1}')
+  _connect "$name" "$@"
+}
+
+# --- main ---
+
+case "${1:-}" in
+  add)        shift; cmd_add "$@" ;;
+  ls|list)    shift; cmd_ls "$@" ;;
+  rm|remove)  shift; cmd_rm "$@" ;;
+  edit)       shift; cmd_edit "$@" ;;
+  show)       shift; cmd_show "$@" ;;
+  uri)        shift; cmd_uri "$@" ;;
+  cache)      shift; case "${1:-}" in clear|flush) _cache_clear ;; *) echo "Usage: pgc cache clear" >&2; exit 1 ;; esac ;;
+  -h|--help|help) usage ;;
+  "")         cmd_fzf ;;
+  *)
+    name="$1"; shift
+    [ "${1:-}" = "--" ] && shift
+    if _get "$name" &>/dev/null; then
+      _connect "$name" "$@"
+    else
+      echo "Unknown server or command: '$name'. Run 'pgc --help' for usage." >&2
+      exit 1
+    fi
+    ;;
+esac

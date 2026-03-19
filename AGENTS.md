@@ -12,6 +12,7 @@ This is a dotfiles repository managed by GNU Stow. It contains configuration fil
 ├── mcphub/                 # MCP server configs (JSON)
 ├── nvim/                   # Neovim configuration (Lua)
 ├── onedrive/              # OneDrive config
+├── pgsql/                 # PostgreSQL config (.psqlrc + pgc connection manager)
 ├── pipewire/              # Audio config
 ├── powershell/            # PowerShell config
 ├── profile/               # Profile scripts
@@ -148,6 +149,52 @@ After modifying Neovim config:
 
 After modifying Sway config:
 1. Run `swaymsg reload` to reload without logging out
+
+## pgc - PostgreSQL Connection Manager
+
+`pgc` is a CLI wrapper around `psql` that stores named server aliases backed by 1Password.
+Credentials are never stored locally — they are fetched from 1Password at connect time via `op`.
+
+Config: `~/.config/pgc/servers.json`
+
+### Querying a database
+
+```bash
+# List available servers
+pgc ls --json
+
+# Show connection details for a server (without connecting)
+pgc show <name> --json
+
+# Run a SQL query non-interactively
+pgc <name> -- -c 'SELECT count(*) FROM users'
+
+# Run a query with raw output (no headers, no alignment)
+pgc <name> -- -A -t -c 'SELECT version()'
+
+# Get connection URI
+pgc uri <name>
+```
+
+### Managing servers
+
+```bash
+# Add a server (non-interactive, for scripts/agents)
+pgc add --name <alias> --op-item <1password-item-id> --vault <vault-name> --env <production|testing>
+
+# Edit a server
+pgc edit <name> --env testing
+pgc edit <name> --op-item <new-id> --vault <new-vault>
+
+# Remove a server
+pgc rm <name>
+```
+
+### Important notes
+- `pgc <name>` with no `-- -c` args opens an **interactive** psql session — do not use this from agents
+- Always use `pgc <name> -- -c 'SQL'` for non-interactive queries
+- Use `--json` flag on `ls` and `show` for machine-readable output
+- The `--env` field (`production` or `testing`) controls the tmux status bar colour indicator
 
 ## File Paths
 

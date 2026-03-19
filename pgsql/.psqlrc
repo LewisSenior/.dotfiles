@@ -1,1 +1,2 @@
 \pset pager off
+\set PROMPT1 '%`tmux-env-psql-update 2>/dev/null`%/%R%x%# '

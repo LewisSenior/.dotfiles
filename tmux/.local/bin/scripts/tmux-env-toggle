@@ -1,0 +1,25 @@
+#!/bin/bash
+
+# Toggle current pane's environment designation between PRODUCTION and TESTING
+# Persists the host mapping in ~/.config/tmux-env-hosts
+
+HOSTS_FILE="$HOME/.config/tmux-env-hosts"
+mkdir -p "$(dirname "$HOSTS_FILE")"
+touch "$HOSTS_FILE"
+
+current=$(tmux show-option -pqv @env_type)
+host=$(tmux show-option -pqv @env_host)
+
+if [ "$current" = "TESTING" ]; then
+    tmux set-option -p @env_type "PRODUCTION"
+    # Remove from testing hosts file
+    if [ -n "$host" ]; then
+        sed -i "/^${host}$/d" "$HOSTS_FILE"
+    fi
+else
+    tmux set-option -p @env_type "TESTING"
+    # Add to testing hosts file
+    if [ -n "$host" ] && ! grep -qxF "$host" "$HOSTS_FILE"; then
+        echo "$host" >> "$HOSTS_FILE"
+    fi
+fi

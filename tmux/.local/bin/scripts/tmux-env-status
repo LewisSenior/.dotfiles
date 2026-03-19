@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# Output the environment designation for the current pane (used in status bar)
+env_type=$(tmux show-option -pqv @env_type)
+
+host=$(tmux show-option -pqv @env_host)
+
+case "$env_type" in
+    TESTING)
+        printf '#[fg=#333333,bg=#a6e3a1,bold] %s · TESTING #[default]' "$host"
+        ;;
+    PRODUCTION)
+        printf '#[fg=#333333,bg=#f38ba8,bold] %s · PRODUCTION #[default]' "$host"
+        ;;
+esac

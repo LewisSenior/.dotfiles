@@ -26,7 +26,7 @@ include /etc/sway/config.d/*
 exec_always autotiling
 exec_always kanshi
 #exec_always --no-startup-id /usr/share/xdg-desktop-portal -r
-exec_always waybar
+exec_always sh -lc 'echo "exec_always reached: $(date)" >> /tmp/sway-waybar.log; pkill -x waybar; sleep 5; waybar >>/tmp/waybar.out 2>>/tmp/waybar.err &'
 exec_always ~/.local/bin/scripts/callmix-setup.sh
 #exec_always systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP
 #exec_always dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=sway
@@ -60,7 +60,7 @@ gaps horizontal 500
 for_window [app_id="Alacritty"] move to workspace 1
 for_window [class="Microsoft-edge"] move to workspace 2
 for_window [app_id="firefox-esr"] move to workspace 2
-for_window [class="1Password"] move scratchpad
+for_window [app_id="1password" title=".*—.*"] move scratchpad
 for_window [title="Picture-in-Picture"] sticky enable, floating enable, resize set 503 500, move position 2243 0
 for_window [app_id="chrome-mfhcipaolaoncdninlpilgbnoidcmeij-Default"] move to workspace 10
 for_window [app_id="chrome-cifhbcnohmdccbgoicgdjpfamggdegmo-Default"] move to workspace 10
@@ -121,7 +121,7 @@ exec swayidle -w \
     bindsym $mod+Shift+q kill
 
     # Start your launcher
-    bindcode $mod+65 exec $menu
+    bindcode $mod+65 exec sway-window-switcher
 
     # Drag floating windows by holding down $mod and left mouse button.
     # Resize them with right mouse button + $mod.

@@ -4,3 +4,60 @@
 if [[ -n "$TMUX" ]]; then
     preexec() { printf '\033k%s\033\\' "${1%% *}"; }
 fi
+
+# tmux environment designation for remote connections
+if [[ -n "$TMUX" ]]; then
+    _tmux_env_set() {
+        local host="$1"
+        local hosts_file="$HOME/.config/tmux-env-hosts"
+        tmux set-option -p @env_host "$host"
+        if [ -f "$hosts_file" ] && grep -qxF "$host" "$hosts_file"; then
+            tmux set-option -p @env_type "TESTING"
+        else
+            tmux set-option -p @env_type "PRODUCTION"
+        fi
+    }
+
+    _tmux_env_clear() {
+        tmux set-option -pu @env_type
+        tmux set-option -pu @env_host
+    }
+
+    ssh() {
+        # Extract hostname (skip flags and their arguments)
+        local host=""
+        local skip_next=false
+        for arg in "$@"; do
+            if $skip_next; then skip_next=false; continue; fi
+            case "$arg" in
+                -*) [[ "$arg" =~ ^-[bcDEeFIiJLlmOopQRSWw]$ ]] && skip_next=true ;;
+                *) host="$arg"; break ;;
+            esac
+        done
+        _tmux_env_set "${host%%.*}"
+        command ssh "$@"
+        _tmux_env_clear
+    }
+
+    psql() {
+        # Extract host and database from flags or connection string
+        local host="localhost" db="" prev=""
+        for arg in "$@"; do
+            case "$prev" in
+                -h) host="$arg"; prev=""; continue ;;
+                -d) db="$arg"; prev=""; continue ;;
+                -U|-p|-f|-o|-L|-v|-c) prev=""; continue ;;
+            esac
+            case "$arg" in
+                -h|-d|-U|-p|-f|-o|-L|-v|-c) prev="$arg" ;;
+                -*)  ;;
+                *) [ -z "$db" ] && db="$arg" ;;
+            esac
+        done
+        local label="${host%%.*}"
+        [ -n "$db" ] && label="${label}/${db}"
+        _tmux_env_set "$label"
+        command psql "$@"
+        _tmux_env_clear
+    }
+fi

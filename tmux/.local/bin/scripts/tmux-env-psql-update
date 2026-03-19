@@ -1,0 +1,13 @@
+#!/bin/bash
+# Update tmux env with psql connection info
+# Skips if @env_host is already set (e.g. by pgc)
+[ -z "$TMUX" ] && exit 0
+
+existing=$(tmux show-option -pqv @env_host)
+[ -n "$existing" ] && exit 0
+
+host="${PGHOST:-localhost}"
+db="${PGDATABASE:-}"
+label="${host%%.*}"
+[ -n "$db" ] && label="${label}/${db}"
+tmux set-option -p @env_host "$label" 2>/dev/null

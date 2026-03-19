@@ -1,0 +1,81 @@
+#!/bin/bash
+
+# Combined window switcher + app launcher
+# Open windows (prefixed ●) listed first, apps (prefixed ○) after
+
+tmp=/tmp/sway-switcher-map
+
+# Get open windows
+swaymsg -t get_tree | python3 -c "
+import json, sys, os
+tree = json.load(sys.stdin)
+out = []
+def walk(node, ws=''):
+    if node.get('type') == 'workspace':
+        ws = node.get('name', '')
+    app_id = node.get('app_id', '')
+    wclass = (node.get('window_properties') or {}).get('class', '')
+    name = node.get('name', '')
+    con_id = node.get('id', '')
+    if node.get('type') in ('con', 'floating_con') and (app_id or wclass):
+        loc = 'scratchpad' if ws == '__i3_scratch' else 'ws:' + ws
+        ident = app_id or wclass
+        out.append(('OPEN', str(con_id), loc, ident, name))
+    for child in node.get('nodes', []) + node.get('floating_nodes', []):
+        walk(child, ws)
+walk(tree)
+
+import configparser, re
+dirs = ['/usr/share/applications', os.path.expanduser('~/.local/share/applications')]
+seen = set()
+apps = []
+for d in dirs:
+    if not os.path.isdir(d):
+        continue
+    for f in os.listdir(d):
+        if not f.endswith('.desktop'):
+            continue
+        cp = configparser.ConfigParser(interpolation=None)
+        cp.read(os.path.join(d, f))
+        if not cp.has_section('Desktop Entry'):
+            continue
+        if cp.get('Desktop Entry', 'NoDisplay', fallback='false').lower() == 'true':
+            continue
+        name = cp.get('Desktop Entry', 'Name', fallback='')
+        exe = cp.get('Desktop Entry', 'Exec', fallback='')
+        if name and exe and name not in seen:
+            seen.add(name)
+            exe = re.sub(r' %[a-zA-Z]', '', exe)
+            apps.append(('APP', exe, name))
+
+# Write mapping file and wofi input
+with open('$tmp', 'w') as mf:
+    for typ, con_id, loc, ident, name in out:
+        label = f'● {ident}: {name}  [{loc}]'
+        mf.write(f'{label}\t{typ}\t{con_id}\t{loc}\n')
+        print(label)
+    for typ, exe, name in apps:
+        binary = exe.split('/')[-1].split()[0]
+        label = f'○ {name} ({binary})'
+        mf.write(f'{label}\t{typ}\t{exe}\n')
+        print(label)
+" > /tmp/sway-switcher-input
+
+selection=$(wofi --dmenu --prompt "Switch / Launch" --insensitive --matching=fuzzy < /tmp/sway-switcher-input)
+[ -z "$selection" ] && exit 0
+
+line=$(grep -F "$selection" "$tmp" | head -1)
+type=$(echo "$line" | cut -f2)
+
+if [ "$type" = "OPEN" ]; then
+    con_id=$(echo "$line" | cut -f3)
+    loc=$(echo "$line" | cut -f4)
+    if [ "$loc" = "scratchpad" ]; then
+        swaymsg "[con_id=$con_id] scratchpad show"
+    else
+        swaymsg "[con_id=$con_id] focus"
+    fi
+elif [ "$type" = "APP" ]; then
+    exe=$(echo "$line" | cut -f3)
+    swaymsg exec -- $exe
+fi
