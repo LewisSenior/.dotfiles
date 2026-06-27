@@ -171,6 +171,12 @@ vim.lsp.config['bashls'] = {
   },
 }
 
+vim.lsp.config['ols'] = {
+  capabilities = capabilities,
+  on_attach = on_attach,
+  autostart = true,
+}
+
 
 local harpoon = require("harpoon")
 

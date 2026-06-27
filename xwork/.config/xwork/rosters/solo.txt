@@ -1,0 +1,2 @@
+# Solo roster — orchestrator handles everything
+orchestrator

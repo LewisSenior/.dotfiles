@@ -72,7 +72,7 @@ return {
 end, { desc = "CodeCompanion: MCP chat" })
 
 	local treesitter_opt = {
-		ensure_installed = { "php", "html", "blade", "php_only" },
+		ensure_installed = { "php", "html", "blade", "php_only", "odin" },
 		highlight = {
 			enable = true,
 		},

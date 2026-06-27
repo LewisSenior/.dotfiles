@@ -1,5 +1,8 @@
 #export PATH="/home/lewis/.local/bin/scripts:/snap/bin:$PATH"
 
+# xwork environment
+[[ -f "$HOME/.config/xwork/env.sh" ]] && source "$HOME/.config/xwork/env.sh"
+
 # Set tmux window name to the command being run
 if [[ -n "$TMUX" ]]; then
     preexec() { printf '\033k%s\033\\' "${1%% *}"; }

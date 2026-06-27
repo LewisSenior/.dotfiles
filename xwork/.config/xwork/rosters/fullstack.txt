@@ -1,0 +1,8 @@
+# Full agent roster — research, design, implementation, infra, security, docs
+orchestrator
+researcher
+architect
+code-writer
+infra
+security
+docs

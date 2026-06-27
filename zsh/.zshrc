@@ -46,6 +46,29 @@ if [ -f "/home/lewissenior/.config/fabric/fabric-bootstrap.inc" ]; then . "/home
 alias pbcopy='xclip -selection clipboard'
 alias pbpaste='xclip -selection clipload -o'
 
+claude() {
+  if [[ -n "$CLAUDE_USE_PERSONAL" ]]; then
+    local personal="${CLAUDE_PERSONAL_DIR:-$HOME/.claude-personal}"
+    if [[ ! -d "$personal" ]]; then
+      print -u2 "claude: $personal does not exist"
+      return 1
+    fi
+    CLAUDE_BIN="$(whence -p claude)" \
+    CLAUDE_PERSONAL="$personal" \
+    CLAUDE_REAL_UID="$(id -u)" \
+    CLAUDE_REAL_GID="$(id -g)" \
+    unshare --user --map-root-user --mount bash -c '
+      mount --bind "$CLAUDE_PERSONAL" "$HOME/.claude" || exit
+      exec unshare --user \
+        --map-user="$CLAUDE_REAL_UID" \
+        --map-group="$CLAUDE_REAL_GID" \
+        "$CLAUDE_BIN" "$@"
+    ' _ "$@"
+  else
+    command claude "$@"
+  fi
+}
+
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion

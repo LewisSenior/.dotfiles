@@ -1,0 +1,4 @@
+# Quick roster — focused single-purpose changes
+orchestrator
+code-writer
+docs

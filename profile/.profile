@@ -26,5 +26,5 @@ if [ -d "$HOME/.local/bin" ] ; then
     PATH="$HOME/.local/bin:$PATH"
 fi
 
-export PATH="$PATH:/home/lewissenior/.local/bin:/opt/nvim-linux-x86_64/bin:/opt/Postman:/usr/sbin:/usr/pgadmin4/bin:/home/lewis/.local/bin/scripts:/snap/bin"
+export PATH="$PATH:/home/lewissenior/.local/bin:/opt/nvim-linux-x86_64/bin:/opt/Postman:/usr/sbin:/usr/pgadmin4/bin:/home/lewis/.local/bin/scripts:/snap/bin:/home/lewis/.local/bin/odin"
 . "$HOME/.cargo/env"
