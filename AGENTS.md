@@ -18,7 +18,7 @@ This is a dotfiles repository managed by GNU Stow. It contains configuration fil
 ├── profile/               # Profile scripts
 ├── ranger/                # File manager config
 ├── rofi/                  # App launcher config
-├── ssh/                   # SSH config
+├── ssh/                   # SSH config (local-only; tracked as config.example)
 ├── starship/              # Prompt config
 ├── sway/                  # Wayland compositor config
 ├── tmux/                  # Terminal multiplexer config
@@ -37,6 +37,14 @@ This is a dotfiles repository managed by GNU Stow. It contains configuration fil
 ./install.sh
 ```
 This runs `stow` to symlink all config folders to `~/.dotfiles`. Run from the repository root.
+
+### Local-only files (*.example convention)
+This repo is public. Files containing sensitive values (IPs, hostnames,
+usernames, credentials) are never committed. The repo tracks a redacted
+`<file>.example` instead; `install.sh` copies it to `<file>` on first run
+if missing, and the real file is gitignored. Currently: `ssh/.ssh/config`.
+Never commit the real files or put real infrastructure values in the
+`.example` templates.
 
 ### Single Config Deployment
 ```bash

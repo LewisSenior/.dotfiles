@@ -2,11 +2,21 @@
 .env
 .env.local
 *.secret
-.git
+
+# Local-only configs — created from the matching *.example by install.sh.
+# These contain real hostnames/IPs/usernames and must never be committed.
+ssh/.ssh/config
+
+# gh CLI auth (hosts.yml stores an OAuth token in cleartext)
+.gh-config/
+
+# Build artifacts and runtime state
+xmonad/.xmonad/*.o
+xmonad/.xmonad/*.hi
+xmonad/.xmonad/*.errors
+xmonad/.xmonad/xmonad-x86_64-linux
+xmonad/.xmonad/prompt-history
 
 # Test and log files
 *.cast
 *.log
-*.o.log
-.gh-config/hosts.yml
-.gh-config/
