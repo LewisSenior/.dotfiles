@@ -8,6 +8,11 @@ This is a dotfiles repository managed by GNU Stow. It contains configuration fil
 .dotfiles/
 ├── .stowrc                # Stow defaults: --target=$HOME --no-folding
 ├── .attic/                # Retired configs (NOT stowed; kept for reference)
+├── .host/                 # Debian HOST files (NOT stowed; installed by pre-req.sh)
+│   ├── containers/arch-sway/   # Containerfile + build.sh for the desktop image
+│   ├── bin/sway-container-session  # greetd session launcher (→ /usr/local/bin)
+│   └── greetd/config.toml      # TUI greeter config (→ /etc/greetd)
+├── pre-req.sh             # Debian host setup: podman, seatd, greetd/tuigreet
 ├── install.sh             # Deploys all configs using stow
 ├── alacritty/             # Terminal emulator config (yml = live on 0.11, toml = post-0.13)
 ├── environment.d/         # systemd user-session environment
@@ -36,6 +41,24 @@ directories with per-file symlinks, so programs writing runtime files into
 `~/.config/<tool>` do not leak them into this repo. PATH is defined in
 `zsh/.zshenv` (all zsh instances) and mirrored in `profile/.profile` for the
 graphical login session — do not add PATH exports to `.zshrc`.
+
+## Desktop Architecture (containerized sway)
+
+The Debian host is a thin boot shim; the desktop is an Arch container:
+
+```
+boot → greetd (vt1, tuigreet TUI) → sway-container-session (as user)
+        └─ rootless podman run localhost/arch-sway → dbus-run-session sway
+```
+
+- Seat management: **seatd on the host**, socket bind-mounted in; sway uses
+  `LIBSEAT_BACKEND=seatd` (DRM-master/input fds arrive over the socket).
+- Host keeps: greetd, seatd, podman, pipewire/wireplumber (socket shared in).
+  SDDM remains installed-but-disabled as the rollback login screen.
+- `$HOME` is bind-mounted, so all stowed configs apply inside the container.
+- Rebuild the image after changing its package list:
+  `.host/containers/arch-sway/build.sh`
+- Rollback: `sudo systemctl disable greetd && sudo systemctl enable --now sddm`
 
 ## Build/Deploy Commands
 

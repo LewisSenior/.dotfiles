@@ -1,0 +1,46 @@
+#!/bin/bash
+# greetd session command: launch the containerized Arch sway desktop.
+# Runs as the authenticated user (rootless podman). If podman/sway fail,
+# greetd drops back to the greeter; diagnostics go to the log below.
+#
+# Seat handling: seatd runs on the HOST; its socket is bind-mounted in and
+# sway uses LIBSEAT_BACKEND=seatd. DRM-master and input fds arrive over the
+# socket (opened host-side), so the container only needs the render node
+# (/dev/dri) plus /dev/input + /run/udev visible for libinput enumeration.
+set -u
+
+IMAGE="localhost/arch-sway"
+RUNTIME_DIR="/run/user/$(id -u)"
+CRUNTIME="$RUNTIME_DIR/sway-container"   # container's XDG_RUNTIME_DIR (real dir on host)
+LOG="$HOME/.local/state/sway-container.log"
+
+mkdir -p "$CRUNTIME" "$(dirname "$LOG")"
+chmod 700 "$CRUNTIME"
+echo "=== sway-container-session $(date -Is)" >>"$LOG"
+
+exec podman run --rm --replace --name sway-desktop \
+  --net=host --ipc=host \
+  --userns=keep-id \
+  --group-add keep-groups \
+  --security-opt label=disable \
+  --device /dev/dri \
+  -v /dev/input:/dev/input \
+  -v /run/seatd.sock:/run/seatd.sock \
+  -v /run/udev:/run/udev:ro \
+  -v "$HOME:$HOME" \
+  -v "$CRUNTIME:$RUNTIME_DIR" \
+  -v "$RUNTIME_DIR/pipewire-0:$RUNTIME_DIR/pipewire-0" \
+  -e XDG_RUNTIME_DIR="$RUNTIME_DIR" \
+  -e LIBSEAT_BACKEND=seatd \
+  -e XDG_SESSION_TYPE=wayland \
+  -e XDG_CURRENT_DESKTOP=sway \
+  -e MOZ_ENABLE_WAYLAND=1 \
+  -e HOME="$HOME" \
+  -w "$HOME" \
+  "$IMAGE" dbus-run-session sway >>"$LOG" 2>&1
+
+# ROOTFUL FALLBACK (pre-approved, use only if rootless fails at DRM/VT):
+# replace the exec above with a sudo rule for
+#   sudo podman run ... --user "$(id -u):$(id -g)" (same flags, drop
+#   --userns=keep-id/--group-add) and add
+#   'lewis ALL=(root) NOPASSWD: /usr/bin/podman run *' to sudoers.d.

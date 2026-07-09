@@ -1,0 +1,43 @@
+# Arch desktop image for the containerized sway session.
+# Host (Debian) provides: greetd, seatd, podman, pipewire. This image is the
+# actual desktop. Build with .host/containers/arch-sway/build.sh
+FROM docker.io/library/archlinux:latest
+
+ARG USERNAME=lewis
+ARG UID=1000
+
+# Core desktop + tooling (mirrors the old install.sh Arch branch, minus host-isms)
+RUN pacman -Syu --noconfirm --needed \
+    base-devel git sudo \
+    mesa vulkan-intel \
+    sway swaybg swaylock swayidle swaync \
+    waybar wofi kanshi grim slurp wl-clipboard \
+    xorg-xwayland \
+    alacritty tmux zsh starship fzf tree rsync wget openssh man-pages \
+    neovim stow github-cli go jq \
+    firefox \
+    pipewire pavucontrol playerctl \
+    ttf-hack-nerd noto-fonts \
+    && pacman -Scc --noconfirm
+
+# Locale
+RUN sed -i 's/^#en_GB.UTF-8/en_GB.UTF-8/' /etc/locale.gen && locale-gen
+ENV LANG=en_GB.UTF-8
+
+# Unprivileged user matching the host user; rootless --userns=keep-id maps
+# host uid 1000 onto this. $HOME is bind-mounted at runtime, so the image
+# home only needs to exist with the right ownership.
+RUN useradd -m -u ${UID} -s /bin/zsh ${USERNAME} \
+    && echo "${USERNAME} ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/${USERNAME}
+
+# AUR: yay, then packages not in the official repos.
+# Tolerant on purpose — an AUR outage shouldn't brick the desktop image build;
+# missing bits can be installed later from inside the container with yay.
+USER ${USERNAME}
+WORKDIR /home/${USERNAME}
+RUN git clone https://aur.archlinux.org/yay-bin.git /tmp/yay-bin \
+    && cd /tmp/yay-bin && makepkg -si --noconfirm && cd / && rm -rf /tmp/yay-bin
+RUN yay -S --noconfirm autotiling || echo "WARN: autotiling failed, install later: yay -S autotiling"
+RUN yay -S --noconfirm 1password || echo "WARN: 1password failed, install later: yay -S 1password"
+
+CMD ["/bin/zsh", "-l"]

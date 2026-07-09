@@ -1,0 +1,10 @@
+# greetd config — installed to /etc/greetd/config.toml by pre-req.sh
+# (which also fixes the greeter user to whatever the Debian package created).
+[terminal]
+vt = 1
+
+[default_session]
+# TUI greeter. If tuigreet ever breaks, swap in the shipped fallback:
+# command = "agreety --cmd /usr/local/bin/sway-container-session"
+command = "tuigreet --time --remember --cmd /usr/local/bin/sway-container-session"
+user = "_greetd"
