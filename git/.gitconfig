@@ -1,0 +1,20 @@
+[credential "https://github.com"]
+	helper = 
+	helper = !/usr/bin/gh auth git-credential
+[credential "https://gist.github.com"]
+	helper = 
+	helper = !/usr/bin/gh auth git-credential
+[user]
+	email = lewis.senior@pinemedia.net
+	name = Lewis Senior
+	signingkey = /home/lewis/.ssh/1password_signing.pub
+[core]
+	filemode = true
+[init]
+	defaultBranch = main
+[gpg]
+	format = ssh
+[commit]
+	gpgsign = true
+[tag]
+	gpgsign = true

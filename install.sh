@@ -76,3 +76,9 @@ done < <(find "$DOTFILES" -name '*.example' -not -path "$DOTFILES/.git/*")
 # the */ glob only matches directories, so root files are never stowed.
 cd "$DOTFILES"
 stow --restow --target="$HOME" */
+
+# systemd user units placed by stow still need enabling once
+if command -v systemctl >/dev/null; then
+	systemctl --user daemon-reload || true
+	systemctl --user enable kanshi.service 2>/dev/null || true
+fi
