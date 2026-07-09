@@ -10,12 +10,12 @@ ssh/.ssh/config
 # gh CLI auth (hosts.yml stores an OAuth token in cleartext)
 .gh-config/
 
-# Build artifacts and runtime state
-xmonad/.xmonad/*.o
-xmonad/.xmonad/*.hi
-xmonad/.xmonad/*.errors
-xmonad/.xmonad/xmonad-x86_64-linux
-xmonad/.xmonad/prompt-history
+# Build artifacts and runtime state (any location)
+*.o
+*.hi
+*.errors
+xmonad-x86_64-linux
+prompt-history
 
 # Test and log files
 *.cast

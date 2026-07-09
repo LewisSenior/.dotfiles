@@ -6,29 +6,36 @@ This is a dotfiles repository managed by GNU Stow. It contains configuration fil
 
 ```
 .dotfiles/
-├── install.sh              # Deploys all configs using stow
-├── alacritty/              # Terminal emulator config
-├── kanshi/                 # Display manager config
-├── mcphub/                 # MCP server configs (JSON)
-├── nvim/                   # Neovim configuration (Lua)
+├── .stowrc                # Stow defaults: --target=$HOME --no-folding
+├── .attic/                # Retired configs (NOT stowed; kept for reference)
+├── install.sh             # Deploys all configs using stow
+├── alacritty/             # Terminal emulator config (yml = live on 0.11, toml = post-0.13)
+├── environment.d/         # systemd user-session environment
+├── git/                   # Git identity, signing, credential helper
+├── kanshi/                # Display manager config
+├── mcphub/                # MCP server configs (JSON)
+├── nvim/                  # Neovim configuration (Lua)
 ├── onedrive/              # OneDrive config
 ├── pgsql/                 # PostgreSQL config (.psqlrc + pgc connection manager)
 ├── pipewire/              # Audio config
-├── powershell/            # PowerShell config
-├── profile/               # Profile scripts
+├── profile/               # Login-shell profile (session PATH)
 ├── ranger/                # File manager config
-├── rofi/                  # App launcher config
 ├── ssh/                   # SSH config (local-only; tracked as config.example)
 ├── starship/              # Prompt config
 ├── sway/                  # Wayland compositor config
+├── systemd/               # systemd user units (kanshi)
 ├── tmux/                  # Terminal multiplexer config
 ├── waybar/                # Status bar config
 ├── wireplumber/           # Audio pipeline config
-├── xinitrc/               # X11 init config
-├── xmodmap/               # Keyboard mapping
-├── xmonad/                # Window manager config
-└── zsh/                   # Shell config
+├── xwork/                 # xwork agent environment
+└── zsh/                   # Shell config (.zshenv owns PATH for zsh)
 ```
+
+Stow runs with `--no-folding` (via `.stowrc`): target directories are real
+directories with per-file symlinks, so programs writing runtime files into
+`~/.config/<tool>` do not leak them into this repo. PATH is defined in
+`zsh/.zshenv` (all zsh instances) and mirrored in `profile/.profile` for the
+graphical login session — do not add PATH exports to `.zshrc`.
 
 ## Build/Deploy Commands
 

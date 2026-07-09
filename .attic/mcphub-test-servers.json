@@ -1,0 +1,65 @@
+{
+  "mcpServers": {
+    "context7": {
+      "args": [
+        "-y",
+        "@upstash/context7-mcp"
+      ],
+      "command": "npx",
+      "disabled": false,
+      "env": {
+        "DEFAULT_MINIMUM_TOKENS": 5000
+      }
+    },
+    "fetch": {
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "mcp/fetch"
+      ],
+      "command": "docker",
+      "disabled": false
+    },
+    "filesystem-here": {
+      "args": [],
+      "command": "/home/lewis/.local/bin/filesystem-here.sh",
+      "disabled": true,
+      "name": "filesystem-here"
+    },
+    "time": {
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "mcp/time"
+      ],
+      "command": "docker",
+      "disabled": false
+    },
+	"postgres": {
+	  "command": "docker",
+	  "args": [
+		"run",
+        "-i",
+        "--rm",
+        "-e",
+        "DATABASE_URI",
+        "crystaldba/postgres-mcp",
+        "--access-mode=restricted"
+	  ],
+	  "env": {
+		  "DATABASE_URI": "postgresql://pmadmin:test@pm-pgsql-03.postgres.database.azure.com:5432/pmgis"
+	  }
+	  }
+  },
+  "nativeMCPServers": {
+    "mcphub": {
+      "disabled": false
+    },
+    "neovim": {
+      "disabled": false,
+      "disabled_prompts": []
+    }
+  }
+}
