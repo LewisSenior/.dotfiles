@@ -4,7 +4,10 @@
 vt = 1
 
 [default_session]
-# TUI greeter. If tuigreet ever breaks, swap in the shipped fallback:
+# TUI greeter. --cmd is the DEFAULT launch (the containerized desktop);
+# --sessions lets you pick host-native sway.desktop from the greeter menu
+# if the container won't come up. --remember-session keeps your last choice.
+# If tuigreet ever breaks, swap in the shipped fallback:
 # command = "agreety --cmd /usr/local/bin/sway-container-session"
-command = "tuigreet --time --remember --cmd /usr/local/bin/sway-container-session"
+command = "tuigreet --time --remember --remember-session --sessions /usr/share/wayland-sessions --cmd /usr/local/bin/sway-container-session"
 user = "_greetd"

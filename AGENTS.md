@@ -55,6 +55,9 @@ boot → greetd (vt1, tuigreet TUI) → sway-container-session (as user)
   `LIBSEAT_BACKEND=seatd` (DRM-master/input fds arrive over the socket).
 - Host keeps: greetd, seatd, podman, pipewire/wireplumber (socket shared in).
   SDDM remains installed-but-disabled as the rollback login screen.
+- Greeter fallback: tuigreet lists host `sway.desktop` (`--sessions`) so a
+  broken container can be sidestepped by picking host-native sway at login;
+  the container launcher stays the default (`--cmd`).
 - `$HOME` is bind-mounted, so all stowed configs apply inside the container.
 - Rebuild the image after changing its package list:
   `.host/containers/arch-sway/build.sh`
