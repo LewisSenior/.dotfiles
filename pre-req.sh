@@ -18,7 +18,7 @@ ME="${SUDO_USER:-$USER}"
 echo "greetd shared/default-x-display-manager select sddm" | debconf-set-selections || true
 
 DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    podman crun uidmap slirp4netns dbus-user-session \
+    podman crun uidmap slirp4netns dbus-user-session fuse-overlayfs \
     seatd greetd
 DEBIAN_FRONTEND=noninteractive apt-get install -y -t bookworm-backports tuigreet
 
@@ -45,6 +45,21 @@ sed "s/^user = .*/user = \"$greeter_user\"/" "$HOST/greetd/config.toml" > /etc/g
 chmod 644 /etc/greetd/config.toml
 
 install -m 755 "$HOST/bin/sway-container-session" /usr/local/bin/sway-container-session
+
+# Rootless podman config for the build: overlay driver + on-/home layer temp.
+# Written as $ME (rootless config lives in the user's home), non-destructively
+# so an existing hand-tuned config is left alone. Must land before build.sh.
+user_home="$(getent passwd "$ME" | cut -d: -f6)"
+install -d -o "$ME" -g "$ME" -m 755 "$user_home/.config/containers"
+for cfg in storage.conf containers.conf; do
+    dest="$user_home/.config/containers/$cfg"
+    if [[ -e "$dest" ]]; then
+        echo "note: $dest exists, leaving it as-is (check driver=overlay + image_copy_tmp_dir)"
+    else
+        install -o "$ME" -g "$ME" -m 644 "$HOST/containers-config/$cfg" "$dest"
+        echo "installed $dest"
+    fi
+done
 
 cat <<EOF
 
