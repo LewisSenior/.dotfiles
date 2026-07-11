@@ -18,7 +18,7 @@ ME="${SUDO_USER:-$USER}"
 echo "greetd shared/default-x-display-manager select sddm" | debconf-set-selections || true
 
 DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    podman crun uidmap slirp4netns dbus-user-session fuse-overlayfs \
+    podman crun uidmap slirp4netns dbus-user-session fuse-overlayfs catatonit \
     seatd greetd
 DEBIAN_FRONTEND=noninteractive apt-get install -y -t bookworm-backports tuigreet
 
@@ -33,9 +33,13 @@ fi
 systemctl enable --now seatd
 
 # Group memberships: render/input for device nodes in the rootless container,
-# plus whatever group owns the seatd socket
+# plus whatever group owns the seatd socket. Add pipewire too when present, so
+# the user picks up its RT limits (95-pipewire.conf: rtprio 95, nice -19) — the
+# rootless-safe way to give the containerized sway realtime scheduling.
 seatd_group="$(stat -c %G /run/seatd.sock)"
-usermod -aG "render,input,$seatd_group" "$ME"
+extra_groups="render,input,$seatd_group"
+getent group pipewire >/dev/null && extra_groups="$extra_groups,pipewire"
+usermod -aG "$extra_groups" "$ME"
 
 # greetd config — fix the greeter user to whatever the Debian package created
 greeter_user="_greetd"

@@ -3,10 +3,24 @@
 # Runs as the authenticated user (rootless podman). If podman/sway fail,
 # greetd drops back to the greeter; diagnostics go to the log below.
 #
+# Session model: the container's process is `systemd --user` (under podman
+# --init/catatonit for reaping). It brings up the user session and starts the
+# enabled sway.service, which runs sway with realtime scheduling and, on exit,
+# runs `systemctl --user exit` so this podman run returns to greetd.
+#
 # Seat handling: seatd runs on the HOST; its socket is bind-mounted in and
 # sway uses LIBSEAT_BACKEND=seatd. DRM-master and input fds arrive over the
 # socket (opened host-side), so the container only needs the render node
 # (/dev/dri) plus /dev/input + /run/udev visible for libinput enumeration.
+#
+# Audio: uses the HOST pipewire (its socket is bind-mounted); the container
+# does not run its own pipewire/wireplumber daemons. The host system D-Bus
+# socket is mounted so waybar's network/battery/backlight modules can read the
+# host's NetworkManager/UPower.
+#
+# Realtime: sway keeps cap_sys_nice, so --cap-add=sys_nice is REQUIRED here or
+# execve of sway EPERMs. --ulimit rtprio/nice supply the scheduling budget
+# (the host grants it via the pipewire group; see pre-req.sh).
 set -u
 
 IMAGE="localhost/arch-sway"
@@ -18,15 +32,24 @@ mkdir -p "$CRUNTIME" "$(dirname "$LOG")"
 chmod 700 "$CRUNTIME"
 echo "=== sway-container-session $(date -Is)" >>"$LOG"
 
+SYSTEM_BUS="/run/dbus/system_bus_socket"
+sysbus_mount=()
+[[ -S "$SYSTEM_BUS" ]] && sysbus_mount=(-v "$SYSTEM_BUS:$SYSTEM_BUS:ro")
+
 exec podman run --rm --replace --name sway-desktop \
+  --init \
   --net=host --ipc=host \
   --userns=keep-id \
   --group-add keep-groups \
   --security-opt label=disable \
+  --cap-add=sys_nice \
+  --ulimit rtprio=95 \
+  --ulimit nice=-19 \
   --device /dev/dri \
   -v /dev/input:/dev/input \
   -v /run/seatd.sock:/run/seatd.sock \
   -v /run/udev:/run/udev:ro \
+  "${sysbus_mount[@]}" \
   -v "$HOME:$HOME" \
   -v "$CRUNTIME:$RUNTIME_DIR" \
   -v "$RUNTIME_DIR/pipewire-0:$RUNTIME_DIR/pipewire-0" \
@@ -37,7 +60,7 @@ exec podman run --rm --replace --name sway-desktop \
   -e MOZ_ENABLE_WAYLAND=1 \
   -e HOME="$HOME" \
   -w "$HOME" \
-  "$IMAGE" dbus-run-session sway >>"$LOG" 2>&1
+  "$IMAGE" /usr/lib/systemd/systemd --user >>"$LOG" 2>&1
 
 # ROOTFUL FALLBACK (pre-approved, use only if rootless fails at DRM/VT):
 # replace the exec above with a sudo rule for

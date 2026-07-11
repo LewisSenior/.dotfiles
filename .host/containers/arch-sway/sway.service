@@ -1,0 +1,23 @@
+[Unit]
+Description=Sway compositor (containerized desktop session)
+# The whole container exists to run this; when it ends, the session ends.
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/sway
+Restart=no
+# Realtime scheduling for the compositor. Requires the host to grant rtprio
+# (pipewire group) and the container to run with --cap-add=sys_nice and
+# --ulimit rtprio; cap_sys_nice is kept on the sway binary for this.
+LimitRTPRIO=95
+LimitNICE=-19
+Environment=XDG_SESSION_TYPE=wayland
+Environment=XDG_CURRENT_DESKTOP=sway
+Environment=MOZ_ENABLE_WAYLAND=1
+Environment=LIBSEAT_BACKEND=seatd
+# When sway exits (logout) or fails to start, tear down the user manager so
+# `podman run` returns and greetd falls back to the greeter.
+ExecStopPost=/usr/bin/systemctl --user exit
+
+[Install]
+WantedBy=default.target

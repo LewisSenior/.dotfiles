@@ -16,7 +16,7 @@ RUN pacman -Syu --noconfirm --needed \
     alacritty tmux zsh starship fzf tree rsync wget openssh man-pages \
     neovim stow github-cli go jq \
     firefox \
-    pipewire pavucontrol playerctl \
+    pipewire wireplumber pavucontrol playerctl alsa-utils \
     ttf-hack-nerd noto-fonts \
     && pacman -Scc --noconfirm
 
@@ -39,5 +39,25 @@ RUN git clone https://aur.archlinux.org/yay-bin.git /tmp/yay-bin \
     && cd /tmp/yay-bin && makepkg -si --noconfirm && cd / && rm -rf /tmp/yay-bin
 RUN yay -S --noconfirm autotiling || echo "WARN: autotiling failed, install later: yay -S autotiling"
 RUN yay -S --noconfirm 1password || echo "WARN: 1password failed, install later: yay -S 1password"
+
+# Realtime scheduling: KEEP cap_sys_nice on the sway binary. The session runs
+# with --cap-add=sys_nice + --ulimit rtprio, so this effective file cap is
+# honored (even for the non-root user) and sway.service can use LimitRTPRIO.
+# NOTE: because the cap is kept, the image MUST be run with --cap-add=sys_nice,
+# or execve of sway EPERMs in the rootless userns.
+# gst-ptp-helper carries net caps that can't be granted in the userns and
+# isn't on the desktop path — strip it so it never EPERMs on exec.
+USER root
+RUN setcap -r /usr/lib/gstreamer-1.0/gst-ptp-helper 2>/dev/null || true
+
+# Session management: the session runs `systemd --user` as the container's
+# process (see sway-container-session). Enable sway.service in the default
+# user target. $HOME is bind-mounted at runtime and shadows
+# ~/.config/systemd/user, so the unit lives in /etc/systemd/user.
+COPY sway.service /etc/systemd/user/sway.service
+RUN mkdir -p /etc/systemd/user/default.target.wants \
+ && ln -sf ../sway.service /etc/systemd/user/default.target.wants/sway.service
+
+USER ${USERNAME}
 
 CMD ["/bin/zsh", "-l"]
