@@ -57,7 +57,9 @@ hr="$(ulimit -Hr 2>/dev/null || echo 0)"
 [[ "$hr" == unlimited ]] && hr=95
 if [[ "$hr" =~ ^[0-9]+$ && "$hr" -ge 1 ]]; then
     rt+=(--ulimit "rtprio=$hr")
-    [[ "$hr" -ge 95 ]] && rt+=(--ulimit nice=-19)
+    # (no --ulimit nice: RLIMIT_NICE uses a 20-n encoding, not the nice value,
+    #  and it's redundant with rtprio RT scheduling. sway.service's LimitNICE
+    #  applies negative nice when the container inherits the budget.)
 else
     echo "note: no rtprio budget (add yourself to the pipewire group + re-login for realtime); starting without it" >>"$LOG"
 fi
