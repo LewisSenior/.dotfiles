@@ -5,10 +5,20 @@
 #
 # Session model: full-system systemd is PID 1 (namespaced root via
 # --userns=keep-id --user 0 + --systemd=always). It boots multi-user.target,
-# which starts sway.service; that unit drops to the non-root user (uid 1000 =
-# you, via keep-id) through a PAM login session and runs sway with realtime
-# scheduling. On sway exit/logout the unit runs `systemctl poweroff`, so the
-# container stops, this podman run returns, and greetd shows the greeter.
+# which starts sway.service; that unit runs sway as the non-root user (uid
+# 1000 = you, via keep-id) under dbus-run-session (its own session bus). On
+# sway exit/logout the unit runs `systemctl poweroff`, so the container stops,
+# this podman run returns, and greetd shows the greeter.
+#
+# We do NOT run an in-container logind user session (systemd 261's userdb
+# can't resolve the keep-id user in this nested userns). Instead — the
+# distrobox/toolbox pattern — the HOST's sockets are forwarded in:
+#   * PipeWire (host owns the sound hardware)  -> audio
+#   * system D-Bus                             -> waybar network/battery/backlight
+# The runtime dir (/run/user/UID) is a host-backed bind mount so those sockets
+# land where the container's clients expect them. The session bus is the
+# container's own (dbus-run-session); there is no host display to forward
+# since sway itself is the compositor.
 #
 # Seat handling: seatd runs on the HOST; its socket is bind-mounted in and
 # sway uses LIBSEAT_BACKEND=seatd. DRM-master and input fds arrive over the
@@ -16,20 +26,26 @@
 # (/dev/dri) plus /dev/input + /run/udev visible for libinput enumeration.
 # container-device-groups.service maps the host device GIDs to the user.
 #
-# Audio: DEFERRED (iteration 2). No pipewire in the container yet.
-#
 # Realtime: sway keeps cap_sys_nice, so --cap-add=sys_nice is REQUIRED here or
 # execve of sway EPERMs. --ulimit rtprio/nice supply the scheduling budget
 # (the host grants it via the pipewire group + re-login; see pre-req.sh).
 set -u
 
 IMAGE="localhost/arch-sway"
+RUNTIME_DIR="/run/user/$(id -u)"
+CRUNTIME="$RUNTIME_DIR/sway-container"   # host-backed XDG_RUNTIME_DIR for the container
 LOG="$HOME/.local/state/sway-container.log"
 
-mkdir -p "$(dirname "$LOG")"
+mkdir -p "$CRUNTIME" "$(dirname "$LOG")"
+chmod 700 "$CRUNTIME"
 echo "=== sway-container-session $(date -Is)" >>"$LOG"
 
-# systemd is PID 1; logind inside manages the user session + /run/user/$UID.
+# Forward host sockets that exist: PipeWire (audio) + system D-Bus (waybar
+# hardware modules). Nested inside the runtime-dir mount; skip if absent.
+fwd=()
+[[ -S "$RUNTIME_DIR/pipewire-0" ]] && fwd+=(-v "$RUNTIME_DIR/pipewire-0:$RUNTIME_DIR/pipewire-0")
+[[ -S /run/dbus/system_bus_socket ]] && fwd+=(-v /run/dbus/system_bus_socket:/run/dbus/system_bus_socket:ro)
+
 exec podman run --rm --replace --name sway-desktop \
   --systemd=always \
   --net=host --ipc=host \
@@ -43,6 +59,8 @@ exec podman run --rm --replace --name sway-desktop \
   -v /dev/input:/dev/input \
   -v /run/seatd.sock:/run/seatd.sock \
   -v /run/udev:/run/udev:ro \
+  -v "$CRUNTIME:$RUNTIME_DIR" \
+  "${fwd[@]}" \
   -v "$HOME:$HOME" \
   "$IMAGE" >>"$LOG" 2>&1
 

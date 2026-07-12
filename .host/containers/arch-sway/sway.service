@@ -7,13 +7,12 @@ Requires=container-device-groups.service
 [Service]
 Type=simple
 # Run the desktop as the non-root user (uid 1000 = you, via keep-id). We do
-# NOT open a logind/pam_systemd session: systemd-userdbd's NSS bridge can't
-# resolve /etc/passwd users inside podman's nested keep-id userns, so logind
-# session creation fails. Instead systemd hands us the runtime dir directly
-# and dbus-run-session provides the session bus (portals, swaync).
+# NOT open a logind/pam_systemd session: systemd 261's userdb can't resolve
+# the keep-id user in this nested userns, so logind session creation fails.
+# Instead XDG_RUNTIME_DIR is a host-backed bind mount (see the session script)
+# and dbus-run-session provides the session bus (portals, swaync). Host
+# PipeWire + system D-Bus sockets are forwarded into that runtime dir.
 User=lewis
-RuntimeDirectory=user/1000
-RuntimeDirectoryMode=0700
 WorkingDirectory=/home/lewis
 Environment=XDG_RUNTIME_DIR=/run/user/1000
 Environment=XDG_SESSION_TYPE=wayland
