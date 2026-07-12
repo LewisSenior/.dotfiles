@@ -74,6 +74,7 @@ exec podman run --rm --replace --name sway-desktop \
   --userns=keep-id --user 0 \
   --group-add keep-groups \
   --security-opt label=disable \
+  --pids-limit=0 \
   --cap-add=sys_nice \
   "${rt[@]}" \
   --device /dev/dri \
