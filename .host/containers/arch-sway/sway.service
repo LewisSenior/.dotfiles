@@ -1,23 +1,34 @@
 [Unit]
-Description=Sway compositor (containerized desktop session)
-# The whole container exists to run this; when it ends, the session ends.
+Description=Sway session (container desktop payload)
+After=systemd-user-sessions.service dbus.service container-device-groups.service
+Wants=dbus.service
+Requires=container-device-groups.service
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/sway
-Restart=no
-# Realtime scheduling for the compositor. Requires the host to grant rtprio
-# (pipewire group) and the container to run with --cap-add=sys_nice and
-# --ulimit rtprio; cap_sys_nice is kept on the sway binary for this.
-LimitRTPRIO=95
-LimitNICE=-19
+# Run the desktop as the non-root user (uid 1000 = you, via keep-id). We do
+# NOT open a logind/pam_systemd session: systemd-userdbd's NSS bridge can't
+# resolve /etc/passwd users inside podman's nested keep-id userns, so logind
+# session creation fails. Instead systemd hands us the runtime dir directly
+# and dbus-run-session provides the session bus (portals, swaync).
+User=lewis
+RuntimeDirectory=user/1000
+RuntimeDirectoryMode=0700
+WorkingDirectory=/home/lewis
+Environment=XDG_RUNTIME_DIR=/run/user/1000
 Environment=XDG_SESSION_TYPE=wayland
 Environment=XDG_CURRENT_DESKTOP=sway
 Environment=MOZ_ENABLE_WAYLAND=1
 Environment=LIBSEAT_BACKEND=seatd
-# When sway exits (logout) or fails to start, tear down the user manager so
-# `podman run` returns and greetd falls back to the greeter.
-ExecStopPost=/usr/bin/systemctl --user exit
+ExecStart=/usr/bin/dbus-run-session /usr/bin/sway
+Restart=no
+# Realtime scheduling (host grants rtprio via the pipewire group; container
+# gets it via --ulimit rtprio; sway keeps cap_sys_nice + --cap-add=sys_nice).
+LimitRTPRIO=95
+LimitNICE=-19
+# When sway exits/logout or fails, power the container off so `podman run`
+# returns and greetd falls back to the greeter.
+ExecStopPost=/usr/bin/systemctl poweroff
 
 [Install]
-WantedBy=default.target
+WantedBy=multi-user.target

@@ -42,22 +42,49 @@ RUN yay -S --noconfirm 1password || echo "WARN: 1password failed, install later:
 
 # Realtime scheduling: KEEP cap_sys_nice on the sway binary. The session runs
 # with --cap-add=sys_nice + --ulimit rtprio, so this effective file cap is
-# honored (even for the non-root user) and sway.service can use LimitRTPRIO.
-# NOTE: because the cap is kept, the image MUST be run with --cap-add=sys_nice,
-# or execve of sway EPERMs in the rootless userns.
+# honored and sway.service can use LimitRTPRIO. NOTE: because the cap is kept,
+# the image MUST run with --cap-add=sys_nice or execve of sway EPERMs.
 # gst-ptp-helper carries net caps that can't be granted in the userns and
 # isn't on the desktop path — strip it so it never EPERMs on exec.
 USER root
 RUN setcap -r /usr/lib/gstreamer-1.0/gst-ptp-helper 2>/dev/null || true
 
-# Session management: the session runs `systemd --user` as the container's
-# process (see sway-container-session). Enable sway.service in the default
-# user target. $HOME is bind-mounted at runtime and shadows
-# ~/.config/systemd/user, so the unit lives in /etc/systemd/user.
-COPY sway.service /etc/systemd/user/sway.service
-RUN mkdir -p /etc/systemd/user/default.target.wants \
- && ln -sf ../sway.service /etc/systemd/user/default.target.wants/sway.service
+# dbus-broker's launcher fails in this rootless container (ENOTCONN / "Package
+# not installed"), which wedges logind and stalls boot. Swap to the reference
+# dbus-daemon implementation, which works in containers.
+RUN pacman -Rdd --noconfirm dbus-broker-units \
+ && pacman -Sy --noconfirm dbus-daemon-units \
+ && pacman -Scc --noconfirm
 
-USER ${USERNAME}
+# --- systemd system container ---
+# Run under `podman run --systemd=always --userns=keep-id --user 0` (see
+# sway-container-session): systemd is PID 1 as namespaced root, sway.service
+# drops to the non-root user via a PAM login session.
+#
+# Mask units that hang or are meaningless in a rootless container (no real
+# hardware/modules/ttys; network + udev come from the host).
+RUN for u in \
+        systemd-firstboot.service systemd-remount-fs.service \
+        systemd-modules-load.service systemd-hwdb-update.service \
+        systemd-udevd.service systemd-udevd-control.socket \
+        systemd-udevd-kernel.socket systemd-udev-trigger.service \
+        systemd-networkd.service systemd-networkd.socket \
+        systemd-networkd-wait-online.service \
+        [email protected] [email protected] console-getty.service \
+        systemd-ask-password-console.path systemd-ask-password-wall.path ; do \
+        ln -sf /dev/null "/etc/systemd/system/$u" ; done
 
-CMD ["/bin/zsh", "-l"]
+# Device-group fixup (host device GIDs -> matching groups for the user) and the
+# sway session unit; boot straight to it via multi-user.target.
+COPY container-device-groups.sh /usr/local/bin/container-device-groups
+COPY container-device-groups.service /etc/systemd/system/container-device-groups.service
+COPY sway.service /etc/systemd/system/sway.service
+RUN chmod 755 /usr/local/bin/container-device-groups \
+ && systemctl set-default multi-user.target \
+ && mkdir -p /etc/systemd/system/multi-user.target.wants \
+ && ln -sf /etc/systemd/system/sway.service \
+        /etc/systemd/system/multi-user.target.wants/sway.service \
+ && ln -sf /etc/systemd/system/container-device-groups.service \
+        /etc/systemd/system/multi-user.target.wants/container-device-groups.service
+
+CMD ["/sbin/init"]

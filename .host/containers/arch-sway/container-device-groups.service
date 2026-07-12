@@ -1,0 +1,13 @@
+[Unit]
+Description=Grant desktop user access to bind-mounted host device nodes
+DefaultDependencies=no
+After=systemd-tmpfiles-setup.service
+Before=sway.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/container-device-groups
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

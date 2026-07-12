@@ -18,7 +18,7 @@ ME="${SUDO_USER:-$USER}"
 echo "greetd shared/default-x-display-manager select sddm" | debconf-set-selections || true
 
 DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    podman crun uidmap slirp4netns dbus-user-session fuse-overlayfs catatonit \
+    podman crun uidmap slirp4netns dbus-user-session fuse-overlayfs \
     seatd greetd
 DEBIAN_FRONTEND=noninteractive apt-get install -y -t bookworm-backports tuigreet
 

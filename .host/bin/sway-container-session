@@ -3,43 +3,37 @@
 # Runs as the authenticated user (rootless podman). If podman/sway fail,
 # greetd drops back to the greeter; diagnostics go to the log below.
 #
-# Session model: the container's process is `systemd --user` (under podman
-# --init/catatonit for reaping). It brings up the user session and starts the
-# enabled sway.service, which runs sway with realtime scheduling and, on exit,
-# runs `systemctl --user exit` so this podman run returns to greetd.
+# Session model: full-system systemd is PID 1 (namespaced root via
+# --userns=keep-id --user 0 + --systemd=always). It boots multi-user.target,
+# which starts sway.service; that unit drops to the non-root user (uid 1000 =
+# you, via keep-id) through a PAM login session and runs sway with realtime
+# scheduling. On sway exit/logout the unit runs `systemctl poweroff`, so the
+# container stops, this podman run returns, and greetd shows the greeter.
 #
 # Seat handling: seatd runs on the HOST; its socket is bind-mounted in and
 # sway uses LIBSEAT_BACKEND=seatd. DRM-master and input fds arrive over the
 # socket (opened host-side), so the container only needs the render node
 # (/dev/dri) plus /dev/input + /run/udev visible for libinput enumeration.
+# container-device-groups.service maps the host device GIDs to the user.
 #
-# Audio: uses the HOST pipewire (its socket is bind-mounted); the container
-# does not run its own pipewire/wireplumber daemons. The host system D-Bus
-# socket is mounted so waybar's network/battery/backlight modules can read the
-# host's NetworkManager/UPower.
+# Audio: DEFERRED (iteration 2). No pipewire in the container yet.
 #
 # Realtime: sway keeps cap_sys_nice, so --cap-add=sys_nice is REQUIRED here or
 # execve of sway EPERMs. --ulimit rtprio/nice supply the scheduling budget
-# (the host grants it via the pipewire group; see pre-req.sh).
+# (the host grants it via the pipewire group + re-login; see pre-req.sh).
 set -u
 
 IMAGE="localhost/arch-sway"
-RUNTIME_DIR="/run/user/$(id -u)"
-CRUNTIME="$RUNTIME_DIR/sway-container"   # container's XDG_RUNTIME_DIR (real dir on host)
 LOG="$HOME/.local/state/sway-container.log"
 
-mkdir -p "$CRUNTIME" "$(dirname "$LOG")"
-chmod 700 "$CRUNTIME"
+mkdir -p "$(dirname "$LOG")"
 echo "=== sway-container-session $(date -Is)" >>"$LOG"
 
-SYSTEM_BUS="/run/dbus/system_bus_socket"
-sysbus_mount=()
-[[ -S "$SYSTEM_BUS" ]] && sysbus_mount=(-v "$SYSTEM_BUS:$SYSTEM_BUS:ro")
-
+# systemd is PID 1; logind inside manages the user session + /run/user/$UID.
 exec podman run --rm --replace --name sway-desktop \
-  --init \
+  --systemd=always \
   --net=host --ipc=host \
-  --userns=keep-id \
+  --userns=keep-id --user 0 \
   --group-add keep-groups \
   --security-opt label=disable \
   --cap-add=sys_nice \
@@ -49,18 +43,8 @@ exec podman run --rm --replace --name sway-desktop \
   -v /dev/input:/dev/input \
   -v /run/seatd.sock:/run/seatd.sock \
   -v /run/udev:/run/udev:ro \
-  "${sysbus_mount[@]}" \
   -v "$HOME:$HOME" \
-  -v "$CRUNTIME:$RUNTIME_DIR" \
-  -v "$RUNTIME_DIR/pipewire-0:$RUNTIME_DIR/pipewire-0" \
-  -e XDG_RUNTIME_DIR="$RUNTIME_DIR" \
-  -e LIBSEAT_BACKEND=seatd \
-  -e XDG_SESSION_TYPE=wayland \
-  -e XDG_CURRENT_DESKTOP=sway \
-  -e MOZ_ENABLE_WAYLAND=1 \
-  -e HOME="$HOME" \
-  -w "$HOME" \
-  "$IMAGE" /usr/lib/systemd/systemd --user >>"$LOG" 2>&1
+  "$IMAGE" >>"$LOG" 2>&1
 
 # ROOTFUL FALLBACK (pre-approved, use only if rootless fails at DRM/VT):
 # replace the exec above with a sudo rule for
