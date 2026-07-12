@@ -10,8 +10,8 @@ Type=simple
 # NOT open a logind/pam_systemd session: systemd 261's userdb can't resolve
 # the keep-id user in this nested userns, so logind session creation fails.
 # Instead XDG_RUNTIME_DIR is a host-backed bind mount (see the session script)
-# and dbus-run-session provides the session bus (portals, swaync). Host
-# PipeWire + system D-Bus sockets are forwarded into that runtime dir.
+# and dbus-run-session provides the session bus (portals, swaync). The host
+# PipeWire socket is forwarded in for audio.
 User=lewis
 WorkingDirectory=/home/lewis
 Environment=XDG_RUNTIME_DIR=/run/user/1000
@@ -25,9 +25,14 @@ Restart=no
 # gets it via --ulimit rtprio; sway keeps cap_sys_nice + --cap-add=sys_nice).
 LimitRTPRIO=95
 LimitNICE=-19
-# When sway exits/logout or fails, power the container off so `podman run`
-# returns and greetd falls back to the greeter.
-ExecStopPost=/usr/bin/systemctl poweroff
+# When sway exits/logout or fails, stop the CONTAINER (never the host!) so
+# `podman run` returns and greetd falls back to the greeter. Signal the
+# container's PID 1 (systemd) with SIGRTMIN+3 (= start poweroff.target); the
+# signal is confined to the container PID namespace so it cannot reach the
+# host. '+' runs it as root, which is required to signal PID 1.
+# DO NOT use `systemctl poweroff` here: with any host system bus reachable it
+# powers off the HOST (uid 1000 is polkit-authorized there).
+ExecStopPost=+/usr/bin/kill -s RTMIN+3 1
 
 [Install]
 WantedBy=multi-user.target

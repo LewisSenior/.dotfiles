@@ -12,13 +12,12 @@
 #
 # We do NOT run an in-container logind user session (systemd 261's userdb
 # can't resolve the keep-id user in this nested userns). Instead — the
-# distrobox/toolbox pattern — the HOST's sockets are forwarded in:
-#   * PipeWire (host owns the sound hardware)  -> audio
-#   * system D-Bus                             -> waybar network/battery/backlight
-# The runtime dir (/run/user/UID) is a host-backed bind mount so those sockets
-# land where the container's clients expect them. The session bus is the
-# container's own (dbus-run-session); there is no host display to forward
-# since sway itself is the compositor.
+# distrobox/toolbox pattern — the host PipeWire socket is forwarded in for
+# audio, into a host-backed bind-mounted runtime dir (/run/user/UID) so
+# clients find it. The session bus is the container's own (dbus-run-session);
+# there is no host display to forward since sway itself is the compositor.
+# The host system D-Bus is deliberately NOT forwarded (it would let the
+# container power off / control the host).
 #
 # Seat handling: seatd runs on the HOST; its socket is bind-mounted in and
 # sway uses LIBSEAT_BACKEND=seatd. DRM-master and input fds arrive over the
@@ -40,11 +39,28 @@ mkdir -p "$CRUNTIME" "$(dirname "$LOG")"
 chmod 700 "$CRUNTIME"
 echo "=== sway-container-session $(date -Is)" >>"$LOG"
 
-# Forward host sockets that exist: PipeWire (audio) + system D-Bus (waybar
-# hardware modules). Nested inside the runtime-dir mount; skip if absent.
+# Forward the host PipeWire socket (audio) into the runtime dir if present.
+# NOTE: deliberately do NOT forward the host system D-Bus socket. A full
+# systemd container that can reach the host system bus can drive the host's
+# logind (poweroff/reboot/suspend) as uid 1000, which polkit authorises — that
+# once shut the host down. waybar's network/battery/backlight lose host data;
+# that is an acceptable trade for not handing the container host control.
 fwd=()
 [[ -S "$RUNTIME_DIR/pipewire-0" ]] && fwd+=(-v "$RUNTIME_DIR/pipewire-0:$RUNTIME_DIR/pipewire-0")
-[[ -S /run/dbus/system_bus_socket ]] && fwd+=(-v /run/dbus/system_bus_socket:/run/dbus/system_bus_socket:ro)
+
+# Realtime is best-effort. Only request the rtprio budget the host actually
+# grants (via the pipewire group + re-login): crun REFUSES to start the whole
+# container if --ulimit exceeds the caller's hard limit, so gate on it. sway
+# runs fine without it (just no realtime scheduling).
+rt=()
+hr="$(ulimit -Hr 2>/dev/null || echo 0)"
+[[ "$hr" == unlimited ]] && hr=95
+if [[ "$hr" =~ ^[0-9]+$ && "$hr" -ge 1 ]]; then
+    rt+=(--ulimit "rtprio=$hr")
+    [[ "$hr" -ge 95 ]] && rt+=(--ulimit nice=-19)
+else
+    echo "note: no rtprio budget (add yourself to the pipewire group + re-login for realtime); starting without it" >>"$LOG"
+fi
 
 exec podman run --rm --replace --name sway-desktop \
   --systemd=always \
@@ -53,8 +69,7 @@ exec podman run --rm --replace --name sway-desktop \
   --group-add keep-groups \
   --security-opt label=disable \
   --cap-add=sys_nice \
-  --ulimit rtprio=95 \
-  --ulimit nice=-19 \
+  "${rt[@]}" \
   --device /dev/dri \
   -v /dev/input:/dev/input \
   -v /run/seatd.sock:/run/seatd.sock \
