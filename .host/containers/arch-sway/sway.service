@@ -25,6 +25,12 @@ Environment=XDG_SESSION_TYPE=wayland
 Environment=XDG_CURRENT_DESKTOP=sway
 Environment=MOZ_ENABLE_WAYLAND=1
 Environment=LIBSEAT_BACKEND=seatd
+# setpriv doesn't set HOME/PATH (and there's no User= to do it), so set them
+# explicitly — otherwise HOME is empty and sway loads /etc/sway/config instead
+# of ~/.config/sway/config. PATH includes the stowed user script dirs so config
+# execs (callmix-setup.sh, sway-window-switcher, …) resolve.
+Environment=HOME=/home/lewis
+Environment=PATH=/home/lewis/.local/bin:/home/lewis/.local/bin/scripts:/usr/local/bin:/usr/bin:/bin
 ExecStart=/usr/bin/setpriv --reuid 1000 --regid 1000 --keep-groups /usr/bin/dbus-run-session /usr/bin/sway
 Restart=no
 # Also send sway's output to the container console so it reaches the podman
