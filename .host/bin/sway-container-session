@@ -7,17 +7,16 @@
 # --userns=keep-id --user 0 + --systemd=always). It boots multi-user.target,
 # which starts sway.service; that unit runs sway as the non-root user (uid
 # 1000 = you, via keep-id) under dbus-run-session (its own session bus). On
-# sway exit/logout the unit runs `systemctl poweroff`, so the container stops,
-# this podman run returns, and greetd shows the greeter.
+# sway exit/logout the unit signals the container's own PID 1 (SIGRTMIN+3), so
+# the container stops, this podman run returns, and greetd shows the greeter.
 #
 # We do NOT run an in-container logind user session (systemd 261's userdb
 # can't resolve the keep-id user in this nested userns). Instead — the
-# distrobox/toolbox pattern — the host PipeWire socket is forwarded in for
-# audio, into a host-backed bind-mounted runtime dir (/run/user/UID) so
-# clients find it. The session bus is the container's own (dbus-run-session);
-# there is no host display to forward since sway itself is the compositor.
-# The host system D-Bus is deliberately NOT forwarded (it would let the
-# container power off / control the host).
+# distrobox/toolbox pattern — host sockets are forwarded in (PipeWire for
+# audio, system D-Bus for the waybar hardware modules) into a host-backed
+# bind-mounted runtime dir (/run/user/UID) so clients find them. The session
+# bus is the container's own (dbus-run-session); there is no host display to
+# forward since sway itself is the compositor.
 #
 # Seat handling: seatd runs on the HOST; its socket is bind-mounted in and
 # sway uses LIBSEAT_BACKEND=seatd. DRM-master and input fds arrive over the
@@ -39,14 +38,19 @@ mkdir -p "$CRUNTIME" "$(dirname "$LOG")"
 chmod 700 "$CRUNTIME"
 echo "=== sway-container-session $(date -Is)" >>"$LOG"
 
-# Forward the host PipeWire socket (audio) into the runtime dir if present.
-# NOTE: deliberately do NOT forward the host system D-Bus socket. A full
-# systemd container that can reach the host system bus can drive the host's
-# logind (poweroff/reboot/suspend) as uid 1000, which polkit authorises — that
-# once shut the host down. waybar's network/battery/backlight lose host data;
-# that is an acceptable trade for not handing the container host control.
+# Forward host sockets: PipeWire (audio) and the system D-Bus (so waybar's
+# network / battery / power-profiles / tray modules see the host's
+# NetworkManager, UPower, etc.).
+# NOTE: the system bus gives the container full host system-bus authority as
+# uid 1000, INCLUDING power actions — so the waybar power menu acts on the
+# HOST (a shutdown click really shuts the machine down; normal for a desktop).
+# The catastrophic case (automatic poweroff on sway exit) is fixed: sway.service
+# signals the container's own PID 1, not `systemctl poweroff`. For strict
+# defense-in-depth, front this with a filtered xdg-dbus-proxy that denies
+# org.freedesktop.login1/systemd1 power methods.
 fwd=()
 [[ -S "$RUNTIME_DIR/pipewire-0" ]] && fwd+=(-v "$RUNTIME_DIR/pipewire-0:$RUNTIME_DIR/pipewire-0")
+[[ -S /run/dbus/system_bus_socket ]] && fwd+=(-v /run/dbus/system_bus_socket:/run/dbus/system_bus_socket:ro)
 
 # Realtime is best-effort. Only request the rtprio budget the host actually
 # grants (via the pipewire group + re-login): crun REFUSES to start the whole
