@@ -1,0 +1,5 @@
+[Desktop Entry]
+Name=Sway (host)
+Comment=Host-native sway (fallback if the container won't come up)
+Exec=sway
+Type=Application

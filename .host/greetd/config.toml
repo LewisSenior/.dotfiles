@@ -7,10 +7,15 @@
 vt = 7
 
 [default_session]
-# TUI greeter. --cmd is the DEFAULT launch (the containerized desktop);
-# --sessions lets you pick host-native sway.desktop from the greeter menu
-# if the container won't come up. --remember-session keeps your last choice.
-# If tuigreet ever breaks, swap in the shipped fallback:
+# tuigreet reads a dedicated session dir so the menu shows EXACTLY two entries
+# — the containerized desktop and host-native sway (installed to
+# /etc/greetd/sessions by pre-req.sh). --xsessions points at an empty dir to
+# suppress /usr/share/xsessions (i3, plasma, ...); without it tuigreet also
+# lists all X sessions. Absolute path pins the fixed tuigreet in
+# /usr/local/bin — the packaged tuigreet (0.7.3/0.8.0) panics 'invalid key'
+# (termion bug); build the current one: cargo install tuigreet && sudo install
+# -m755 ~/.cargo/bin/tuigreet /usr/local/bin/tuigreet
+# Fallback greeter if tuigreet ever breaks:
 # command = "agreety --cmd /usr/local/bin/sway-container-session"
-command = "tuigreet --time --remember --remember-session --sessions /usr/share/wayland-sessions --cmd /usr/local/bin/sway-container-session"
+command = "/usr/local/bin/tuigreet --time --remember --remember-session --sessions /etc/greetd/sessions --xsessions /etc/greetd/xsessions"
 user = "_greetd"

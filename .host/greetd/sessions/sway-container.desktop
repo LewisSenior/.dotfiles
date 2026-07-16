@@ -1,0 +1,5 @@
+[Desktop Entry]
+Name=Sway (container)
+Comment=Containerized Arch sway desktop (podman)
+Exec=/usr/local/bin/sway-container-session
+Type=Application

@@ -48,6 +48,11 @@ getent passwd "$greeter_user" >/dev/null || { echo "ERROR: no greetd greeter use
 sed "s/^user = .*/user = \"$greeter_user\"/" "$HOST/greetd/config.toml" > /etc/greetd/config.toml
 chmod 644 /etc/greetd/config.toml
 
+# Session menu: exactly two entries (containerized + host sway), plus an empty
+# xsessions dir so tuigreet doesn't also list /usr/share/xsessions.
+install -d -m 755 /etc/greetd/sessions /etc/greetd/xsessions
+install -m 644 "$HOST/greetd/sessions/"*.desktop /etc/greetd/sessions/
+
 install -m 755 "$HOST/bin/sway-container-session" /usr/local/bin/sway-container-session
 
 # Rootless podman config for the build: overlay driver + on-/home layer temp.
