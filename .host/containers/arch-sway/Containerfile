@@ -87,4 +87,23 @@ RUN chmod 755 /usr/local/bin/container-device-groups \
  && ln -sf /etc/systemd/system/container-device-groups.service \
         /etc/systemd/system/multi-user.target.wants/container-device-groups.service
 
+# Optional sudo password (LAST step, so busting its cache is cheap). If
+# build.sh passed a 'sudopw' build secret, set it as ${USERNAME}'s password and
+# require it for sudo; otherwise passwordless sudo (from the useradd step)
+# stays. The secret is never written to a layer or the (public) repo — only the
+# /etc/shadow hash lands in the LOCAL image. Build secrets are NOT part of the
+# layer cache key, so build.sh passes a fresh SUDOPW_EPOCH each run to force
+# this step to re-run and reflect the current password (or its absence).
+ARG SUDOPW_EPOCH=0
+RUN --mount=type=secret,id=sudopw,required=false \
+    : "cache-bust=${SUDOPW_EPOCH}"; \
+    if [ -s /run/secrets/sudopw ]; then \
+        printf '%s:%s\n' "${USERNAME}" "$(cat /run/secrets/sudopw)" | chpasswd \
+        && echo "${USERNAME} ALL=(ALL) ALL" > /etc/sudoers.d/${USERNAME} \
+        && echo "sudo: password required for ${USERNAME}"; \
+    else \
+        echo "${USERNAME} ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/${USERNAME} \
+        && echo "sudo: passwordless (no sudopw secret given)"; \
+    fi
+
 CMD ["/sbin/init"]
