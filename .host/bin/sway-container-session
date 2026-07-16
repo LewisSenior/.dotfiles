@@ -19,10 +19,11 @@
 # forward since sway itself is the compositor.
 #
 # Seat handling: seatd runs on the HOST; its socket is bind-mounted in and
-# sway uses LIBSEAT_BACKEND=seatd. DRM-master and input fds arrive over the
-# socket (opened host-side), so the container only needs the render node
-# (/dev/dri) plus /dev/input + /run/udev visible for libinput enumeration.
-# container-device-groups.service maps the host device GIDs to the user.
+# sway uses LIBSEAT_BACKEND=seatd. seatd opens the DRM and input device fds
+# HOST-side and passes them over the socket (SCM_RIGHTS); libinput enumerates
+# via udev (/run/udev). So the container needs the render node (/dev/dri) and
+# /run/udev, but NOT /dev/input — deliberately not mounted, so a compromised
+# app in the container can't read raw input (keylog) directly.
 #
 # Realtime: sway keeps cap_sys_nice, so --cap-add=sys_nice is REQUIRED here or
 # execve of sway EPERMs. --ulimit rtprio/nice supply the scheduling budget
@@ -74,11 +75,10 @@ exec podman run --rm --replace --name sway-desktop \
   --userns=keep-id --user 0 \
   --group-add keep-groups \
   --security-opt label=disable \
-  --pids-limit=0 \
+  --pids-limit=16384 \
   --cap-add=sys_nice \
   "${rt[@]}" \
   --device /dev/dri \
-  -v /dev/input:/dev/input \
   -v /run/seatd.sock:/run/seatd.sock \
   -v /run/udev:/run/udev:ro \
   -v "$CRUNTIME:$RUNTIME_DIR" \
