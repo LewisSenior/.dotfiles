@@ -1,7 +1,10 @@
 # greetd config — installed to /etc/greetd/config.toml by pre-req.sh
 # (which also fixes the greeter user to whatever the Debian package created).
 [terminal]
-vt = 1
+# Debian's greetd.service reserves tty7 (Conflicts=getty@tty7.service). Using
+# vt = 1 collides with getty@tty1 — the getty keeps tty1, greetd can't take it,
+# and tuigreet dies. tty7 is free and is what the packaged unit expects.
+vt = 7
 
 [default_session]
 # TUI greeter. --cmd is the DEFAULT launch (the containerized desktop);
