@@ -7,8 +7,21 @@
 # These contain real hostnames/IPs/usernames and must never be committed.
 ssh/.ssh/config
 
+# Everything else under ssh/.ssh/ is local-only too: private keys, the matching
+# public keys, authorized_keys, and known_hosts (which records real hostnames
+# and IPs). This repo is PUBLIC — only the *.example templates may be tracked.
+ssh/.ssh/*
+!ssh/.ssh/*.example
+
 # gh CLI auth (hosts.yml stores an OAuth token in cleartext)
 .gh-config/
+
+# AUR checkouts / package build trees. install.sh and the container build clone
+# these; they are upstream sources + build output, not dotfiles, and they carry
+# their own nested .git (which would land here as a broken gitlink). yay/ alone
+# reached ~1GB of artifacts.
+/yay/
+/1password/
 
 # Build artifacts and runtime state (any location)
 *.o
