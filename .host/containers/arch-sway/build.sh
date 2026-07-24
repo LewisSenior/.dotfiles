@@ -3,6 +3,13 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# containers.conf sets image_copy_tmp_dir="storage", which stages layer temp
+# data in <graphroot>/tmp. podman does NOT create that dir on its own, so
+# without this the first layer commit dies at "creating a temporary directory:
+# stat <graphroot>/tmp: no such file or directory". Idempotent.
+graphroot="$(podman info -f '{{.Store.GraphRoot}}')"
+mkdir -p "$graphroot/tmp"
+
 # Optional: set a sudo password for the in-container user. Leave blank to keep
 # passwordless sudo. Passed to the build as a secret (podman --secret), so it
 # is baked only into the LOCAL image's /etc/shadow — never into a build layer

@@ -31,7 +31,11 @@ Environment=LIBSEAT_BACKEND=seatd
 # execs (callmix-setup.sh, sway-window-switcher, …) resolve.
 Environment=HOME=/home/lewis
 Environment=PATH=/home/lewis/.local/bin:/home/lewis/.local/bin/scripts:/usr/local/bin:/usr/bin:/bin
-ExecStart=/usr/bin/setpriv --reuid 1000 --regid 1000 --keep-groups /usr/bin/dbus-run-session /usr/bin/sway
+# sway-launch (stowed into ~/.local/bin/scripts, on the host $HOME bind-mount)
+# adds the wlroots NVIDIA workarounds (--unsupported-gpu + GBM/GLX/cursor env)
+# when the GPU was injected via CDI (/dev/nvidia* present); otherwise it execs
+# plain sway, so the Intel/mesa path is unchanged.
+ExecStart=/usr/bin/setpriv --reuid 1000 --regid 1000 --keep-groups /usr/bin/dbus-run-session /home/lewis/.local/bin/scripts/sway-launch
 Restart=no
 # Also send sway's output to the container console so it reaches the podman
 # log (~/.local/state/sway-container.log); otherwise it only hits the internal

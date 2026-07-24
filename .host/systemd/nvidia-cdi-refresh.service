@@ -1,0 +1,20 @@
+[Unit]
+Description=Regenerate the NVIDIA CDI spec for rootless podman
+Documentation=https://github.com/NVIDIA/nvidia-container-toolkit
+# The CDI spec pins the host driver's userspace libraries by path/version, so it
+# must match the CURRENTLY-LOADED kernel module. Regenerating every boot keeps it
+# in step across driver updates (which need a reboot to load the new module
+# anyway). Gate on the driver actually being loaded so it's a no-op otherwise.
+ConditionPathExists=/proc/driver/nvidia/version
+After=local-fs.target
+# Ensure the spec exists before the login manager can launch the container desktop.
+Before=greetd.service display-manager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStartPre=/usr/bin/mkdir -p /etc/cdi
+ExecStart=/usr/bin/nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
+
+[Install]
+WantedBy=multi-user.target

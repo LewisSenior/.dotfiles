@@ -1,0 +1,66 @@
+#!/bin/bash
+# sway launcher: apply the NVIDIA proprietary-driver workarounds when — and
+# only when — the proprietary nvidia kernel driver is actually loaded, then
+# exec sway with any args passed through ("$@", e.g. -c <config>).
+#
+# wlroots/Sway need extra coaxing to run on NVIDIA's proprietary stack:
+#   --unsupported-gpu          sway refuses NVIDIA otherwise (wlroots quirk)
+#   GBM_BACKEND=nvidia-drm     allocate buffers via NVIDIA's GBM backend
+#   __GLX_VENDOR_LIBRARY_NAME  route GLX/EGL to the NVIDIA libraries
+#   WLR_NO_HARDWARE_CURSORS    NVIDIA hardware cursors are broken under wlroots
+#
+# Detection keys on the DEVICE NODES, not the kernel module: /dev/nvidia* are
+# created by the proprietary (or open-kernel) driver — nouveau creates none of
+# them. Crucially they are namespace-local: on the host they exist whenever the
+# driver is loaded, but inside a container they exist ONLY when the GPU was
+# injected (e.g. the NVIDIA Container Toolkit / CDI `--device nvidia.com/gpu=all`
+# in sway-container-session). So the containerized desktop enables NVIDIA iff the
+# GPU was actually passed in — unlike /proc/driver/nvidia or /sys/module/nvidia,
+# which the host kernel exposes globally regardless of injection.
+#
+# Override the autodetection with SWAY_FORCE_NVIDIA=1 (force on) or =0 (force
+# off) — useful on hybrid Optimus laptops where the proprietary module is
+# loaded but sway actually renders on the Intel iGPU.
+set -u
+
+nvidia_available() {
+    [ -e /dev/nvidia0 ] || [ -e /dev/nvidiactl ]
+}
+
+use_nvidia=false
+case "${SWAY_FORCE_NVIDIA:-}" in
+    1) use_nvidia=true ;;
+    0) use_nvidia=false ;;
+    *) nvidia_available && use_nvidia=true ;;
+esac
+
+flags=()
+if [ "$use_nvidia" = true ]; then
+    export WLR_NO_HARDWARE_CURSORS=1
+    export GBM_BACKEND=nvidia-drm
+    export __GLX_VENDOR_LIBRARY_NAME=nvidia
+    flags+=(--unsupported-gpu)
+
+    # Point libgbm at the NVIDIA GBM backend's actual location. In the container
+    # the NVIDIA Container Toolkit / CDI injects nvidia-drm_gbm.so at the Debian
+    # multiarch path (/usr/lib/x86_64-linux-gnu/gbm), but the Arch container's
+    # mesa only searches /usr/lib/gbm — so without this, GBM_BACKEND=nvidia-drm
+    # fails with "failed to open nvidia-drm … No such file", wlroots can't build
+    # an FBO, and sway hangs on a black screen. Harmless on the Debian host,
+    # where that dir is already libgbm's default. Only set when not already set.
+    if [ -z "${GBM_BACKENDS_PATH:-}" ] && [ -e /usr/lib/x86_64-linux-gnu/gbm/nvidia-drm_gbm.so ]; then
+        export GBM_BACKENDS_PATH=/usr/lib/x86_64-linux-gnu/gbm
+    fi
+
+    # KMS on NVIDIA needs nvidia_drm loaded with modeset=1; without it wlroots
+    # finds no display and sway black-screens. The modeset param itself is
+    # root-only (0400), so detect KMS the user-readable way: modesetting exposes
+    # per-connector nodes (card*-DP-1, card*-HDMI-A-1, …) under /sys/class/drm.
+    # Warn only when none exist, so a correctly-configured host stays quiet.
+    kms=(/sys/class/drm/card*-*)
+    if [ ! -e "${kms[0]}" ]; then
+        echo "sway-launch: WARNING: no DRM KMS connectors found — nvidia_drm.modeset=1 may be off; sway may not find a display. Set 'options nvidia-drm modeset=1' in /etc/modprobe.d and rebuild the initramfs, or add nvidia_drm.modeset=1 to the kernel cmdline." >&2
+    fi
+fi
+
+exec sway "${flags[@]}" "$@"
