@@ -1,0 +1,27 @@
+#!/bin/bash
+# Poll /run/host/dev/input for new devices, bind-mount them, and reload sway
+# Container's /dev/input is static; this script makes it dynamic
+
+LAST_DEVICES=""
+
+while true; do
+    CURRENT_DEVICES=$(ls /run/host/dev/input/event* 2>/dev/null | sort)
+
+    if [[ "$CURRENT_DEVICES" != "$LAST_DEVICES" ]] && [[ -n "$LAST_DEVICES" ]]; then
+        sleep 0.5  # Wait for ACLs to be applied
+
+        # Find new devices and bind-mount them
+        for dev in /run/host/dev/input/event*; do
+            target="/dev/input/$(basename "$dev")"
+            if [[ ! -e "$target" ]]; then
+                sudo touch "$target" 2>/dev/null
+                sudo mount --bind "$dev" "$target" 2>/dev/null
+            fi
+        done
+
+        swaymsg reload 2>/dev/null
+    fi
+
+    LAST_DEVICES="$CURRENT_DEVICES"
+    sleep 1
+done

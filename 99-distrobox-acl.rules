@@ -1,0 +1,13 @@
+# Grant host user RW access to hotplug devices for rootless containers
+
+# USB bus nodes
+ACTION=="add", SUBSYSTEM=="usb", ENV{DEVNAME}!="", RUN+="/usr/local/bin/udev-acl-distrobox"
+ACTION=="change", SUBSYSTEM=="usb", ENV{DEVNAME}!="", RUN+="/usr/local/bin/udev-acl-distrobox"
+
+# hidraw
+ACTION=="add", SUBSYSTEM=="hidraw", ENV{DEVNAME}!="", RUN+="/usr/local/bin/udev-acl-distrobox"
+ACTION=="change", SUBSYSTEM=="hidraw", ENV{DEVNAME}!="", RUN+="/usr/local/bin/udev-acl-distrobox"
+
+# input devices
+ACTION=="add", SUBSYSTEM=="input", KERNEL=="event*", ENV{DEVNAME}!="", RUN+="/usr/local/bin/udev-acl-distrobox"
+ACTION=="change", SUBSYSTEM=="input", KERNEL=="event*", ENV{DEVNAME}!="", RUN+="/usr/local/bin/udev-acl-distrobox"
