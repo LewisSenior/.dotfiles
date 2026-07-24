@@ -28,6 +28,13 @@ RUN pacman -Syu --noconfirm --needed \
 RUN sed -i 's/^#en_GB.UTF-8/en_GB.UTF-8/' /etc/locale.gen && locale-gen
 ENV LANG=en_GB.UTF-8
 
+# Timezone. The archlinux base image ships NO /etc/localtime, so glibc falls
+# back to UTC and every clock in the session (waybar, logs, file timestamps)
+# reads an hour behind during BST. Point it at the zoneinfo that tzdata already
+# provides. Europe/London — not a fixed offset — so GMT/BST switches follow the
+# DST rules automatically.
+RUN ln -sf /usr/share/zoneinfo/Europe/London /etc/localtime
+
 # Unprivileged user matching the host user; rootless --userns=keep-id maps
 # host uid 1000 onto this. $HOME is bind-mounted at runtime, so the image
 # home only needs to exist with the right ownership.
