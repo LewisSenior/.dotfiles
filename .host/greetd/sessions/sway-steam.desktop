@@ -1,0 +1,5 @@
+[Desktop Entry]
+Name=Steam (host)
+Comment=Minimal host sway running only Steam (Deck / gamepad UI) — no bars
+Exec=/usr/local/bin/sway-steam-session
+Type=Application

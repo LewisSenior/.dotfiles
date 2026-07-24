@@ -1,0 +1,14 @@
+#!/bin/bash
+# greetd session command: a minimal HOST sway running ONLY Steam (Deck / gamepad
+# UI) — no waybar, no autotiling, none of the full desktop's exec'd apps. Uses
+# the dedicated steam-session sway config (stowed to ~/.config/sway). sway-launch
+# applies the NVIDIA proprietary-driver workarounds when that driver is loaded.
+#
+# This is the greetd equivalent of `steam.sh --run` (which targets the older
+# /usr/share/wayland-sessions path); both boot the same steam-session.conf.
+set -u
+
+config="$HOME/.config/sway/steam-session.conf"
+log="$HOME/.local/state/steam-sway.log"
+mkdir -p "$(dirname "$log")"
+exec /usr/local/bin/sway-launch -c "$config" >"$log" 2>&1
