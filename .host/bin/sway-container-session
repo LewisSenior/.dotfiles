@@ -28,6 +28,20 @@
 # Realtime: sway keeps cap_sys_nice, so --cap-add=sys_nice is REQUIRED here or
 # execve of sway EPERMs. --ulimit rtprio/nice supply the scheduling budget
 # (the host grants it via the pipewire group + re-login; see pre-req.sh).
+#
+# Electron apps (bitwarden, 1password): --cap-add=sys_admin is REQUIRED or their
+# zygote dies at startup ("Failed to move to new namespace ... errno = Operation
+# not permitted", then a FATAL CHECK in zygote_host_impl_linux.cc). Both ship a
+# SETUID-root chrome-sandbox, so Chromium takes the old SUID sandbox path, which
+# calls clone(CLONE_NEWPID|CLONE_NEWNET) WITHOUT CLONE_NEWUSER — it thinks it is
+# real root and so assumes it needs no userns. A PID namespace created without a
+# user namespace in the same clone() needs CAP_SYS_ADMIN, which is not in the
+# default bounding set. (The kernel is not the problem: unprivileged userns is
+# enabled and clone(CLONE_NEWUSER|NEWPID|NEWNET) as one call already succeeds.)
+# Scope: this is CAP_SYS_ADMIN inside the rootless container's user namespace —
+# it confers nothing on the host. Preferred over launching Electron with
+# --no-sandbox, which would leave a password manager's renderer unsandboxed
+# against the bind-mounted $HOME.
 set -u
 
 IMAGE="localhost/arch-sway"
@@ -51,12 +65,32 @@ echo "=== sway-container-session $(date -Is)" >>"$LOG"
 # org.freedesktop.login1/systemd1 power methods.
 fwd=()
 [[ -S "$RUNTIME_DIR/pipewire-0" ]] && fwd+=(-v "$RUNTIME_DIR/pipewire-0:$RUNTIME_DIR/pipewire-0")
+# pipewire-0 alone only serves NATIVE PipeWire clients. Anything speaking the
+# PulseAudio protocol via libpulse (pactl, pavucontrol, Firefox, most desktop
+# apps) needs the host pipewire-pulse socket too, or it fails 'Connection
+# refused'. Podman creates the intervening pulse/ dir inside $CRUNTIME.
+[[ -S "$RUNTIME_DIR/pulse/native" ]] && fwd+=(-v "$RUNTIME_DIR/pulse/native:$RUNTIME_DIR/pulse/native")
 [[ -S /run/dbus/system_bus_socket ]] && fwd+=(-v /run/dbus/system_bus_socket:/run/dbus/system_bus_socket:ro)
 
 # Realtime is best-effort. Only request the rtprio budget the host actually
 # grants (via the pipewire group + re-login): crun REFUSES to start the whole
 # container if --ulimit exceeds the caller's hard limit, so gate on it. sway
 # runs fine without it (just no realtime scheduling).
+# NVIDIA (optional): inject the GPU via the NVIDIA Container Toolkit / CDI when a
+# spec is present. nvidia-cdi-refresh.service (a host root unit, see pre-req.sh)
+# regenerates /etc/cdi/nvidia.yaml every boot to match the running driver, so
+# the spec is always current and lives in podman's default (root-only) scan dir
+# — rootless podman 5.x does NOT honour cdi_spec_dirs from a user override, so a
+# user-writable dir won't work. `--device nvidia.com/gpu=all` then mounts the
+# host's matching driver userspace + device nodes into the image, which is why
+# the image carries NO nvidia packages. If the spec is absent (non-NVIDIA host,
+# or the refresh unit found no GPU) we simply start on Intel/mesa.
+gpu=()
+if [ -f /etc/cdi/nvidia.yaml ]; then
+    gpu+=(--device nvidia.com/gpu=all)
+    echo "nvidia: /etc/cdi/nvidia.yaml present; injecting GPU via CDI" >>"$LOG"
+fi
+
 rt=()
 hr="$(ulimit -Hr 2>/dev/null || echo 0)"
 [[ "$hr" == unlimited ]] && hr=95
@@ -77,7 +111,9 @@ exec podman run --rm --replace --name sway-desktop \
   --security-opt label=disable \
   --pids-limit=16384 \
   --cap-add=sys_nice \
+  --cap-add=sys_admin \
   "${rt[@]}" \
+  "${gpu[@]}" \
   --device /dev/dri \
   -v /run/seatd.sock:/run/seatd.sock \
   -v /run/udev:/run/udev:ro \

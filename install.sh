@@ -11,6 +11,7 @@ if grep -qi '^ID=arch' /etc/os-release; then
 	autoconf \
 	automake \
 	bitwarden \
+	direnv \
 	ffmpeg \
 	firefox \
 	fzf \

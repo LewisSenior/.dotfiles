@@ -68,16 +68,21 @@ export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
 
-_direnv_hook() {
-  trap -- '' SIGINT;
-  eval "$("/usr/bin/direnv" export zsh)";
-  trap - SIGINT;
-}
-typeset -ag precmd_functions;
-if [[ -z "${precmd_functions[(r)_direnv_hook]+1}" ]]; then
-  precmd_functions=( _direnv_hook ${precmd_functions[@]} )
-fi
-typeset -ag chpwd_functions;
-if [[ -z "${chpwd_functions[(r)_direnv_hook]+1}" ]]; then
-  chpwd_functions=( _direnv_hook ${chpwd_functions[@]} )
+# direnv. Resolve via PATH rather than a hardcoded /usr/bin/direnv, and only
+# install the hook when it's actually present — an unguarded hook fires on
+# every prompt and every cd, so a missing binary means an error on each one.
+if (( $+commands[direnv] )); then
+  _direnv_hook() {
+    trap -- '' SIGINT;
+    eval "$(direnv export zsh)";
+    trap - SIGINT;
+  }
+  typeset -ag precmd_functions;
+  if [[ -z "${precmd_functions[(r)_direnv_hook]+1}" ]]; then
+    precmd_functions=( _direnv_hook ${precmd_functions[@]} )
+  fi
+  typeset -ag chpwd_functions;
+  if [[ -z "${chpwd_functions[(r)_direnv_hook]+1}" ]]; then
+    chpwd_functions=( _direnv_hook ${chpwd_functions[@]} )
+  fi
 fi

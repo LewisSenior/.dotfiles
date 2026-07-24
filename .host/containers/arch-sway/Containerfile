@@ -7,15 +7,19 @@ ARG USERNAME=lewis
 ARG UID=1000
 
 # Core desktop + tooling (mirrors the old install.sh Arch branch, minus host-isms)
+# NOTE: NO nvidia userspace packages here on purpose — on NVIDIA hosts the
+# session injects the host's driver libs (matched to the running kernel module)
+# via the NVIDIA Container Toolkit / CDI. libglvnd is the vendor-neutral GL/EGL
+# dispatch that then routes to the injected libGLX_nvidia / libEGL_nvidia.
 RUN pacman -Syu --noconfirm --needed \
     base-devel git sudo \
-    mesa vulkan-intel \
+    mesa vulkan-intel libglvnd \
     sway swaybg swaylock swayidle swaync \
     waybar wofi kanshi grim slurp wl-clipboard \
     xorg-xwayland \
     alacritty tmux zsh starship fzf tree rsync wget openssh man-pages \
-    neovim stow github-cli go jq \
-    firefox \
+    neovim stow github-cli go jq direnv \
+    firefox bitwarden \
     pipewire wireplumber pavucontrol playerctl alsa-utils \
     ttf-hack-nerd noto-fonts \
     && pacman -Scc --noconfirm
