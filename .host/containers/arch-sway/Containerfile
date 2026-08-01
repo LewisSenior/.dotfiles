@@ -18,6 +18,7 @@ RUN pacman -Syu --noconfirm --needed \
     waybar wofi kanshi grim slurp wl-clipboard \
     xorg-xwayland \
     alacritty tmux zsh starship fzf tree rsync wget openssh man-pages \
+    inotify-tools \
     neovim stow github-cli go jq direnv \
     firefox bitwarden \
     pipewire wireplumber pavucontrol playerctl alsa-utils \
@@ -85,18 +86,24 @@ RUN for u in \
         systemd-ask-password-console.path systemd-ask-password-wall.path ; do \
         ln -sf /dev/null "/etc/systemd/system/$u" ; done
 
-# Device-group fixup (host device GIDs -> matching groups for the user) and the
-# sway session unit; boot straight to it via multi-user.target.
+# Device-group fixup (host device GIDs -> matching groups for the user), the
+# hotplug device mirror (projects /run/host-devices onto real /dev paths so USB
+# devices plugged in AFTER the container started still work), and the sway
+# session unit; boot straight to it via multi-user.target.
 COPY container-device-groups.sh /usr/local/bin/container-device-groups
 COPY container-device-groups.service /etc/systemd/system/container-device-groups.service
+COPY container-device-mirror.sh /usr/local/bin/container-device-mirror
+COPY container-device-mirror.service /etc/systemd/system/container-device-mirror.service
 COPY sway.service /etc/systemd/system/sway.service
-RUN chmod 755 /usr/local/bin/container-device-groups \
+RUN chmod 755 /usr/local/bin/container-device-groups /usr/local/bin/container-device-mirror \
  && systemctl set-default multi-user.target \
  && mkdir -p /etc/systemd/system/multi-user.target.wants \
  && ln -sf /etc/systemd/system/sway.service \
         /etc/systemd/system/multi-user.target.wants/sway.service \
  && ln -sf /etc/systemd/system/container-device-groups.service \
-        /etc/systemd/system/multi-user.target.wants/container-device-groups.service
+        /etc/systemd/system/multi-user.target.wants/container-device-groups.service \
+ && ln -sf /etc/systemd/system/container-device-mirror.service \
+        /etc/systemd/system/multi-user.target.wants/container-device-mirror.service
 
 # Optional sudo password (LAST step, so busting its cache is cheap). If
 # build.sh passed a 'sudopw' build secret, set it as ${USERNAME}'s password and

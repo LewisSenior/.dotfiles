@@ -9,8 +9,8 @@ Personal Linux dotfiles repository for an Arch Linux/Wayland development environ
 ## Deployment Commands
 
 ```bash
-# Full setup in new Distrobox container (primary method)
-./pre-req.sh
+# Desktop host bootstrap (podman, seatd, greetd) — run on the workstation
+sudo ./pre-req.sh
 
 # Run inside container or on native Arch system
 ./install.sh
@@ -61,16 +61,34 @@ Plugins are defined in `/nvim/.config/nvim/lua/lewis/plugins/` as modular Lua sp
 
 Located in `scripts/.local/bin/scripts/`:
 - `tmux-sessionizer` - Fuzzy project session launcher (searches ~/PineMedia, ~/cyberscape, ~/.dotfiles, ~/, ~/tmp)
-- `input-hotplug-watch` - Device monitoring for Distrobox containers
+- `sway-launch` - Sway wrapper applying the NVIDIA proprietary-driver workarounds
 - `callmix-setup.sh` - PipeWire virtual audio sink for call recording
 
 ### Container Architecture
 
-Uses Distrobox with:
-- `--root --init` for systemd support
-- `--nvidia` for GPU pass-through
-- Host device mounting via `input-hotplug-watch` script
-- ACL rules in `99-distrobox-acl.rules`
+The containerized sway desktop (`.host/`) runs on rootless podman, not Distrobox:
+- `--systemd=always --userns=keep-id --user 0` — full systemd as PID 1
+- GPU via NVIDIA Container Toolkit / CDI (`--device nvidia.com/gpu=all`)
+- Input via host `seatd` (fds passed over the socket); `/dev/input` is
+  deliberately never mounted, so container apps cannot read raw evdev
+- USB hotplug via a udev-maintained staging dir — see below
+
+### USB Hotplug Passthrough
+
+podman resolves devices at `podman run` time, so anything plugged in later is
+invisible to a running container. Two halves work around this:
+
+| Piece | Runs on | Role |
+|-------|---------|------|
+| `.host/udev/99-container-devices.rules` | host | allowlists device classes |
+| `.host/bin/container-device-export` | host | mknods staged nodes into `/run/container-devices` + ACLs them to your uid |
+| `.host/systemd/container-devices.service` | host | mounts the staging tmpfs at boot, replays what's already plugged in |
+| `.host/containers/arch-sway/container-device-mirror.sh` | container | bind-mounts staged nodes onto their real `/dev` paths |
+
+Allowlist: USB bus nodes, hidraw, USB serial (`ttyUSB*`/`ttyACM*`), webcams,
+USB storage. To add a class, edit the `.rules` file — but read the security
+note at the top of `container-device-export` first.
+
 
 ## Key Bindings Reference
 

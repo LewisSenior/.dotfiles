@@ -1,0 +1,16 @@
+[Unit]
+Description=Stage allowlisted hotplug devices for the containerized sway session
+# The staging tmpfs must exist before udev events start landing on it (the
+# per-event helper no-ops while it is absent), and before greetd can launch a
+# session that bind-mounts it.
+After=systemd-udevd.service systemd-udev-trigger.service
+Wants=systemd-udevd.service
+Before=greetd.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/container-device-export --init
+
+[Install]
+WantedBy=multi-user.target

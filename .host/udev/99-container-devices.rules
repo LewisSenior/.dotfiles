@@ -1,0 +1,46 @@
+# Hotplug device passthrough for the containerized sway session.
+# Stages allowlisted device classes into /run/container-devices, which
+# sway-container-session bind-mounts into the container as /run/host-devices.
+# See .host/bin/container-device-export for the mechanism and the security
+# note on what staging a device actually grants.
+#
+# This is an ALLOWLIST. /dev/input is intentionally not in it — sway reaches
+# keyboards and mice through seatd, so raw evdev in the container would buy
+# nothing and cost the anti-keylogging property from commit 416bb6f.
+
+ACTION!="add|change|remove", GOTO="container_devices_end"
+ENV{DEVNAME}=="", GOTO="container_devices_end"
+
+# Teardown first, matched on subsystem alone. On `remove` the property-based
+# conditions below (DEVTYPE, ID_BUS) are read back from the udev database
+# entry that is being torn down, so relying on them here would strand nodes in
+# the staging dir whenever that lookup came up empty.
+ACTION=="remove", SUBSYSTEM=="usb|hidraw|tty|video4linux|media|block", \
+    RUN+="/usr/local/bin/container-device-export"
+ACTION=="remove", GOTO="container_devices_end"
+
+# Raw USB bus nodes (libusb): security keys, scanners, printers, adb, DACs.
+# DEVTYPE=="usb_device" selects the device nodes; USB interfaces carry no
+# DEVNAME and are filtered out above anyway.
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", \
+    RUN+="/usr/local/bin/container-device-export"
+
+# HID: FIDO2/U2F security keys, OpenRGB, Stream Deck, gaming peripherals.
+SUBSYSTEM=="hidraw", RUN+="/usr/local/bin/container-device-export"
+
+# USB serial adapters (Arduino, ESP32, USB-TTL). Restricted to the USB-backed
+# tty names so the host's real serial ports and virtual consoles stay out.
+SUBSYSTEM=="tty", KERNEL=="ttyUSB*|ttyACM*", \
+    RUN+="/usr/local/bin/container-device-export"
+
+# Webcams and capture devices. /dev/media* carries the media controller nodes
+# that libcamera and some UVC devices need alongside /dev/video*.
+SUBSYSTEM=="video4linux", RUN+="/usr/local/bin/container-device-export"
+SUBSYSTEM=="media", RUN+="/usr/local/bin/container-device-export"
+
+# USB storage, whole disks and partitions alike. ID_BUS=="usb" is what keeps
+# the host's internal disks out of the container.
+SUBSYSTEM=="block", ENV{ID_BUS}=="usb", \
+    RUN+="/usr/local/bin/container-device-export"
+
+LABEL="container_devices_end"
