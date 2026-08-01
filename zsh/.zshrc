@@ -65,8 +65,20 @@ claude() {
 }
 
 export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
-[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
+# nvm matches against patterns like `#*`, which extendedglob (set above) rejects
+# as a bad pattern - that makes `nvm use default` fail silently at load, leaving
+# system node active. Load nvm, and run every later nvm call, with it off.
+if [ -s "$NVM_DIR/nvm.sh" ]; then
+  unsetopt extendedglob
+  \. "$NVM_DIR/nvm.sh"  # This loads nvm
+  [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
+  setopt extendedglob
+  functions -c nvm _nvm_real
+  nvm() {
+    setopt localoptions noextendedglob
+    _nvm_real "$@"
+  }
+fi
 
 # direnv. Resolve via PATH rather than a hardcoded /usr/bin/direnv, and only
 # install the hook when it's actually present — an unguarded hook fires on
