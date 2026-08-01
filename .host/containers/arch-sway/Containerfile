@@ -19,6 +19,7 @@ RUN pacman -Syu --noconfirm --needed \
     xorg-xwayland \
     alacritty tmux zsh starship fzf tree rsync wget openssh man-pages \
     inotify-tools \
+    waypipe \
     neovim stow github-cli go jq direnv \
     firefox bitwarden \
     pipewire wireplumber pavucontrol playerctl alsa-utils \

@@ -1,0 +1,119 @@
+# Arch image for a REMOTE container on a cloud VM (DigitalOcean, Hetzner, …).
+#
+# Sibling of ../arch-sway, and deliberately NOT a variant of it. The desktop
+# image exists to BE a compositor on real hardware; this one exists to run
+# Wayland clients that are displayed somewhere else entirely, over waypipe. So
+# everything the desktop image needs to drive hardware is absent here:
+#
+#   no sway/waybar/wofi/swaylock/kanshi   your laptop's compositor does that
+#   no seatd, no /dev/dri, no udev rules  there is no display or input here
+#   no NVIDIA/CDI, no device passthrough  nothing to pass through on a VM
+#   no pipewire/pavucontrol/alsa-utils    waypipe forwards NO audio at all
+#
+# What it does have: sshd (so waypipe can reach in), waypipe itself, and the
+# dev tooling + GUI applications worth forwarding.
+#
+# Usage from your laptop, once the container is running on the VM:
+#     waypipe ssh -p 2222 lewis@your-vm alacritty
+# waypipe wraps ssh, starts `waypipe server` inside this container, and the
+# app's surfaces arrive on your local compositor.
+FROM docker.io/library/archlinux:latest
+
+ARG USERNAME=lewis
+ARG UID=1000
+# full = also install the GUI applications worth forwarding. Set to `base` for
+# a small, fast build on a cheap or metered VM; add apps later with pacman/yay.
+ARG APPS=full
+
+# --- base: shell, dev tooling, and the two things that make this image work --
+# openssh: waypipe reaches the container over ssh, so sshd runs in here rather
+#          than on the VM host (the host's own sshd keeps port 22).
+# waypipe: must exist on BOTH ends. `waypipe ssh` runs `waypipe server` here.
+# fonts:   rendering happens on this side; only buffers cross the wire, so a
+#          missing font is a missing glyph on your laptop.
+RUN pacman -Syu --noconfirm --needed \
+    base-devel git sudo \
+    openssh waypipe \
+    zsh tmux starship fzf tree rsync wget man-pages \
+    neovim stow github-cli go jq direnv ripgrep fd \
+    alacritty \
+    ttf-hack-nerd noto-fonts \
+    && pacman -Scc --noconfirm
+
+# Locale + timezone, same reasoning as the desktop image (the archlinux base
+# ships no /etc/localtime, so every clock reads UTC).
+RUN sed -i 's/^#en_GB.UTF-8/en_GB.UTF-8/' /etc/locale.gen && locale-gen \
+ && ln -sf /usr/share/zoneinfo/Europe/London /etc/localtime
+ENV LANG=en_GB.UTF-8
+
+# Unprivileged user matching the VM user; --userns=keep-id maps host uid 1000
+# onto this one. $HOME is bind-mounted at runtime, which is also how sshd finds
+# ~/.ssh/authorized_keys — no keys are ever baked into the image.
+RUN useradd -m -u ${UID} -s /bin/zsh ${USERNAME} \
+ && echo "${USERNAME} ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/${USERNAME}
+
+# --- GUI applications (APPS=full) -------------------------------------------
+# These are Wayland clients and forward over waypipe correctly. Firefox runs
+# native Wayland via MOZ_ENABLE_WAYLAND. Electron apps (bitwarden, 1password)
+# additionally need --cap-add=sys_admin at RUN time for their SUID sandbox —
+# see the --electron flag in .host/bin/arch-remote-run, off by default because
+# this box faces the internet.
+RUN if [ "${APPS}" = "full" ]; then \
+        pacman -Sy --noconfirm --needed firefox bitwarden wl-clipboard \
+        && pacman -Scc --noconfirm ; \
+    else \
+        echo "APPS=${APPS}: skipping GUI applications" ; \
+    fi
+
+# AUR, only for the full build — tolerant, since an AUR outage should not fail
+# the whole image on a VM you are trying to bring up.
+USER ${USERNAME}
+WORKDIR /home/${USERNAME}
+RUN if [ "${APPS}" = "full" ]; then \
+        git clone https://aur.archlinux.org/yay-bin.git /tmp/yay-bin \
+        && (cd /tmp/yay-bin && makepkg -si --noconfirm) ; rm -rf /tmp/yay-bin ; \
+        yay -S --noconfirm 1password || echo "WARN: 1password failed; install later with yay" ; \
+    fi
+USER root
+
+# --- sshd -------------------------------------------------------------------
+# Listens on 22 INSIDE the container. Nothing on the VM binds 22 as a result:
+# the container gets its own network namespace and arch-remote-run publishes
+# this as 2222 on the host. Keeping the internal port standard means the
+# published port can be changed without rebuilding the image.
+COPY sshd-container.conf /etc/ssh/sshd_config.d/10-container.conf
+
+# Host keys must OUTLIVE the container, or every `podman run` mints new ones
+# and your laptop refuses to connect with a changed-key warning. They are
+# generated into a bind-mounted directory on first boot instead of being baked
+# into the image (which would ship a private key to anyone with the image).
+COPY sshd-keygen-container.service /etc/systemd/system/sshd-keygen-container.service
+
+# XDG_RUNTIME_DIR without logind: we do not open a logind session here (same
+# nested-userns limitation as the desktop image), so nothing would create
+# /run/user/1000. waypipe and other clients expect it to exist.
+COPY runtime-dir.conf /etc/tmpfiles.d/container-runtime-dir.conf
+
+# --- systemd system container -----------------------------------------------
+# Same model as the desktop image: full systemd as PID 1 under
+# `podman run --systemd=always`. Mask what is meaningless without hardware.
+RUN for u in \
+        systemd-firstboot.service systemd-remount-fs.service \
+        systemd-modules-load.service systemd-hwdb-update.service \
+        systemd-udevd.service systemd-udevd-control.socket \
+        systemd-udevd-kernel.socket systemd-udev-trigger.service \
+        systemd-networkd.service systemd-networkd.socket \
+        systemd-networkd-wait-online.service \
+        [email protected] [email protected] console-getty.service \
+        systemd-ask-password-console.path systemd-ask-password-wall.path ; do \
+        ln -sf /dev/null "/etc/systemd/system/$u" ; done \
+ && systemctl set-default multi-user.target \
+ && systemctl enable sshd.service sshd-keygen-container.service
+
+# dbus-broker's launcher fails in a rootless container and wedges the boot;
+# the reference implementation works. Same swap as the desktop image.
+RUN pacman -Rdd --noconfirm dbus-broker-units \
+ && pacman -Sy --noconfirm dbus-daemon-units \
+ && pacman -Scc --noconfirm
+
+CMD ["/sbin/init"]

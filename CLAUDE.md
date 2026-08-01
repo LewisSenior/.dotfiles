@@ -17,6 +17,9 @@ sudo ./pre-req.sh
 
 # Gaming environment (separate container with gamescope)
 ./steam.sh
+
+# Cloud VM bootstrap for the remote/waypipe container
+sudo ./vm-pre-req.sh
 ```
 
 ### Manual Stow Operations
@@ -89,6 +92,39 @@ Allowlist: USB bus nodes, hidraw, USB serial (`ttyUSB*`/`ttyACM*`), webcams,
 USB storage. To add a class, edit the `.rules` file — but read the security
 note at the top of `container-device-export` first.
 
+### Remote Container (cloud VM + waypipe)
+
+`.host/containers/arch-remote/` is a **sibling** of `arch-sway`, not a variant.
+The desktop image exists to be a compositor on real hardware; this one runs
+Wayland clients that are displayed elsewhere, so it has no sway/waybar/wofi, no
+seatd, no `/dev/dri`, no udev, no device passthrough and no audio stack —
+waypipe forwards no audio at all.
+
+```bash
+sudo ./vm-pre-req.sh                            # podman, subuid, lingering
+.host/containers/arch-remote/build.sh           # prompts; --apps full|base
+arch-remote-run                                 # prompts; --port, --electron
+# from the laptop:
+waypipe ssh -p 2222 lewis@vm alacritty
+```
+
+Both scripts are interactive when run bare and fully flag-driven otherwise
+(`--yes`), so they also work from cloud-init or a systemd unit.
+
+| Decision | Why |
+|----------|-----|
+| `--net=host` by default, `--net bridge` available | host netns is the chosen default; note that under it **every** port the container binds is public on the VM's address, not just sshd |
+| sshd port comes from a generated drop-in, never the image | under host netns there is no translation layer, so sshd must bind the real port itself; keeping it out of the image leaves the port a runtime flag |
+| The image ships **no** `Port` directive at all | sshd *accumulates* `Port` lines rather than overriding them. A `Port 22` in the image plus `Port 2222` in the drop-in makes sshd listen on both, and binding 22 collides with the VM's own sshd — taking the whole daemon down. `sshd -t` reports that config as valid, so it fails only at bind time |
+| Refuses `--net host` with port 22 or any port <1024 | rootless podman cannot bind privileged ports, and 22 would collide with the VM's sshd |
+| Host keys in `~/.local/share/arch-remote/ssh` | baked-in keys would ship a private key with the image; regenerating per start trips known_hosts on every restart |
+| Key-only auth, `AllowUsers`, no root | the port faces the internet the moment it is published |
+| `--cap-add=sys_admin` behind `--electron` | bitwarden/1password need it for their SUID sandbox; not a default on an internet-facing box |
+| `loginctl enable-linger` | otherwise the container dies when you log out of the VM |
+
+Usernames are hardcoded to `lewis` in `sshd-container.conf` and
+`runtime-dir.conf`, matching the existing convention in `arch-sway`
+(`container-device-groups.sh`, `sway.service`).
 
 ## Key Bindings Reference
 

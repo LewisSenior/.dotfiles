@@ -1,0 +1,18 @@
+[Unit]
+Description=Generate persistent sshd host keys into the bind-mounted key dir
+# Must beat sshd to it: sshd_config points HostKey at /etc/ssh/keys and sshd
+# refuses to start if those files are missing.
+Before=sshd.service
+# Skip once keys exist — this runs on every boot of a --replace'd container,
+# and regenerating would defeat the entire point of persisting them.
+ConditionPathExists=!/etc/ssh/keys/ssh_host_ed25519_key
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/install -d -m 700 /etc/ssh/keys
+ExecStart=/usr/bin/ssh-keygen -q -t ed25519 -N "" -f /etc/ssh/keys/ssh_host_ed25519_key
+ExecStart=/usr/bin/ssh-keygen -q -t rsa -b 4096 -N "" -f /etc/ssh/keys/ssh_host_rsa_key
+
+[Install]
+WantedBy=multi-user.target
