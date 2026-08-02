@@ -1,0 +1,104 @@
+#!/bin/bash
+# HOST half of the hotplug device passthrough for the containerized sway
+# session. Driven by /etc/udev/rules.d/99-container-devices.rules.
+#
+# The problem it solves: podman wires devices into a container at `podman run`
+# time — `--device /dev/dri` expands to one bind-mount PER NODE, and the
+# container's /dev is a private tmpfs. Nothing that appears on the host
+# afterwards can reach it, so USB devices only work if they were plugged in
+# before the session started.
+#
+# The fix: keep a staging directory of device nodes that udev maintains live,
+# and bind-mount that ONE directory into the container. Because it is a plain
+# directory on a shared tmpfs, nodes created in it after the container started
+# are immediately visible inside — which is what makes hotplug work. The
+# container-side counterpart (container-device-mirror) moves them into place
+# at their real /dev paths.
+#
+# Nodes here are mknod'd COPIES: same major/minor as the real device, but a
+# separate inode, so the ACL below governs container access without touching
+# the permissions of the host's own /dev nodes. That does mean a device the
+# host keeps root-only becomes readable/writable by the desktop user from
+# inside the container — which is the point of passing it through, but worth
+# knowing before widening the allowlist in the .rules file.
+#
+# /dev/input is deliberately absent from that allowlist: sway gets keyboards
+# and mice via seatd (opened host-side, fd passed over the socket), so the
+# container never needs raw evdev, and withholding it keeps a compromised app
+# in the container from keylogging. See commit 416bb6f.
+set -u
+
+STAGE=/run/container-devices
+CONF=/etc/container-devices.conf
+
+CONTAINER_DEVICE_UID=1000
+# shellcheck source=/dev/null
+[ -r "$CONF" ] && . "$CONF"
+
+# --init: called once at boot by container-devices.service.
+#
+# The staging dir needs its own tmpfs: /run is mounted `nodev` on Debian, and
+# device nodes on a nodev filesystem cannot be opened — mknod would succeed and
+# every open() would fail. This mount MUST NOT happen from a udev RUN+= rule:
+# systemd-udevd runs its workers with MountFlags=slave, so a mount made there
+# would be invisible to the rest of the system (podman included). Creating
+# files in an already-mounted tmpfs propagates fine, which is why the per-event
+# path below only ever mknod's.
+if [ "${1:-}" = "--init" ]; then
+    if ! mountpoint -q "$STAGE"; then
+        mkdir -p "$STAGE"
+        mount -t tmpfs -o mode=0755,nosuid,noexec tmpfs "$STAGE"
+    fi
+    # Replay what is already plugged in, so a device present at boot is staged
+    # without waiting for the user to unplug and reinsert it. `change` rather
+    # than `add`: our rules match both, and re-emitting `add` to every other
+    # rule on the system is a needlessly big hammer.
+    udevadm trigger --action=change \
+        --subsystem-match=usb --subsystem-match=hidraw --subsystem-match=tty \
+        --subsystem-match=video4linux --subsystem-match=media \
+        --subsystem-match=block
+    exit 0
+fi
+
+# Fail safe: with no staging tmpfs (init unit never ran, or was masked) do
+# nothing at all rather than scatter unopenable nodes across /run.
+mountpoint -q "$STAGE" || exit 0
+
+# udev exports DEVNAME as an absolute path; tolerate the older relative form.
+name="${DEVNAME:-}"
+[ -n "$name" ] || exit 0
+rel="${name#/dev/}"
+case "$rel" in /*|*..*) exit 0 ;; esac      # refuse anything outside the stage
+target="$STAGE/$rel"
+
+if [ "${ACTION:-}" = remove ]; then
+    rm -f "$target"
+    # Prune the directories a removed node leaves behind (/dev/bus/usb/003 once
+    # its last device is gone). rmdir only succeeds while they are empty, so a
+    # bus that still holds devices is left alone.
+    dir="$(dirname "$target")"
+    while [ "$dir" != "$STAGE" ] && [ -d "$dir" ]; do
+        rmdir "$dir" 2>/dev/null || break
+        dir="$(dirname "$dir")"
+    done
+    exit 0
+fi
+
+maj="${MAJOR:-}"
+min="${MINOR:-}"
+[ -n "$maj" ] && [ -n "$min" ] || exit 0
+
+# Block devices are 'b', everything in the allowlist is 'c'.
+type=c
+[ "${SUBSYSTEM:-}" = block ] && type=b
+
+mkdir -p "$(dirname "$target")"
+[ -e "$target" ] || mknod -m 0600 "$target" "$type" "$maj" "$min" || exit 0
+
+# Grant the desktop user access. The ACL is keyed on the HOST uid, which
+# --userns=keep-id maps to the same uid inside the container, so the check
+# lands on the same identity either side. chown is the fallback for a host
+# without the `acl` package (pre-req.sh installs it).
+setfacl -m "u:$CONTAINER_DEVICE_UID:rw" "$target" 2>/dev/null \
+    || chown "$CONTAINER_DEVICE_UID" "$target" 2>/dev/null \
+    || true

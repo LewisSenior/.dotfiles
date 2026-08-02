@@ -41,7 +41,7 @@ echo "greetd shared/default-x-display-manager select sddm" | debconf-set-selecti
 log "Installing base packages (podman, crun, seatd, greetd, stow, gnupg …)"
 DEBIAN_FRONTEND=noninteractive apt-get $APTLOCK install -y \
     podman crun uidmap slirp4netns dbus-user-session fuse-overlayfs \
-    seatd greetd stow gnupg
+    seatd greetd stow gnupg acl
 
 # tuigreet: trixie/main ships a current (0.9.x) build, but bookworm/main only
 # has the buggy 0.7.x that panics ('invalid key'), so on bookworm pull it from
@@ -115,6 +115,30 @@ install -m 755 "$HOST/bin/sway-steam-session" /usr/local/bin/sway-steam-session
 # in /etc/modprobe.d — not managed here. sway-launch warns at runtime if KMS
 # isn't active.)
 install -m 755 "$DOTFILES/scripts/.local/bin/scripts/sway-launch" /usr/local/bin/sway-launch
+
+log "Installing hotplug device passthrough (udev -> /run/container-devices)"
+# Without this, USB devices only reach the containerized desktop if they were
+# plugged in before it started: podman resolves --device/-v at run time and the
+# container's /dev is a private tmpfs. The udev rule below stages nodes for the
+# allowlisted device classes into a tmpfs that the session bind-mounts in, so
+# hotplug works while the container is running. Allowlist and rationale (incl.
+# why /dev/input stays out) live in the .rules file.
+install -m 755 "$HOST/bin/container-device-export" /usr/local/bin/container-device-export
+install -m 644 "$HOST/udev/99-container-devices.rules" /etc/udev/rules.d/99-container-devices.rules
+# The udev helper grants access by ACL keyed on your host uid, which
+# --userns=keep-id maps to the same uid inside the container.
+me_uid="$(id -u "$ME")"
+printf 'CONTAINER_DEVICE_UID=%s\n' "$me_uid" > /etc/container-devices.conf
+chmod 644 /etc/container-devices.conf
+
+install -m 644 "$HOST/systemd/container-devices.service" /etc/systemd/system/container-devices.service
+systemctl daemon-reload
+systemctl enable container-devices.service >/dev/null 2>&1 || true
+udevadm control --reload-rules || warn "udevadm reload failed; rules apply after reboot"
+# Mount the staging tmpfs and replay what is already plugged in, so this boot
+# has passthrough without waiting for a reboot.
+systemctl start container-devices.service \
+    || warn "device staging failed to start; check: systemctl status container-devices.service"
 
 # NVIDIA Container Toolkit (CDI): lets the containerized desktop use the GPU via
 # `--device nvidia.com/gpu=all` (see sway-container-session). Only on NVIDIA

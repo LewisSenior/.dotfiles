@@ -1,0 +1,23 @@
+# systemd USER unit — install to ~/.config/systemd/user/ (vm-pre-req.sh does
+# this) and enable with:
+#     systemctl --user enable --now arch-remote.service
+#
+# Needs lingering enabled for the user, or this stops the moment you log out:
+#     sudo loginctl enable-linger $USER
+[Unit]
+Description=Arch remote container (waypipe target)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+# --foreground so systemd supervises podman directly rather than losing track
+# of a detached container; --yes so it never blocks on a prompt at boot.
+ExecStart=/usr/local/bin/arch-remote-run --foreground --yes
+ExecStop=/usr/bin/podman stop --time 20 arch-remote
+Restart=on-failure
+RestartSec=5
+# Pulling and starting a systemd container is not instant on a small VM.
+TimeoutStartSec=300
+
+[Install]
+WantedBy=default.target

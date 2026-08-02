@@ -1,0 +1,23 @@
+[Unit]
+Description=Project host hotplug devices into /dev
+# Ordered before sway.service so anything already plugged in at boot is in
+# place by the time the desktop starts. The ExecStartPre pass below is what
+# makes that ordering meaningful — ExecStart is a long-lived watcher and would
+# otherwise be "started" before its first sync completed.
+After=container-device-groups.service
+Before=sway.service
+# Absent on a container started without the host staging mount (an older
+# sway-container-session, or a host that never ran pre-req.sh); skip quietly.
+ConditionPathIsDirectory=/run/host-devices
+
+[Service]
+Type=exec
+ExecStartPre=/usr/local/bin/container-device-mirror --once
+ExecStart=/usr/local/bin/container-device-mirror
+Restart=on-failure
+RestartSec=2
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=multi-user.target

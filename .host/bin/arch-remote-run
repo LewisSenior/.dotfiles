@@ -1,0 +1,207 @@
+#!/bin/bash
+# Start the remote container on a cloud VM. Run as your user (rootless podman).
+#
+# Interactive by default — run it bare and it asks. Every prompt has a flag, so
+# it also drops into cloud-init, a systemd unit, or CI:
+#     arch-remote-run --port 2222 --yes
+#
+# Networking (--net, default host):
+#
+#   host    share the VM's network stack, like the desktop session does. sshd
+#           binds PORT on the VM directly. Anything else the container binds is
+#           ALSO on the VM's address immediately — a dev server on :3000 is
+#           public the moment it starts. Convenient, and the reason the
+#           firewall note at the end is not decoration.
+#   bridge  container keeps its own namespace; only sshd is published, as
+#           PORT:22. Nothing else is reachable unless published on purpose.
+#
+# Either way PORT is what you ssh to. The difference is what ELSE is exposed.
+#
+# sshd's listening port is set by a generated drop-in (see below) rather than
+# baked into the image, because under host netns there is no translation layer
+# to remap it — sshd has to bind the real port itself.
+#
+# From your laptop, once this is up:
+#     waypipe ssh -p 2222 lewis@your-vm alacritty
+# waypipe wraps ssh, starts `waypipe server` inside the container, and the
+# app's surfaces are drawn by YOUR compositor. Nothing renders on the VM.
+set -Eeuo pipefail
+
+IMAGE=localhost/arch-remote
+NAME=arch-remote
+PORT=""
+NETMODE=host
+ELECTRON=0
+FOREGROUND=0
+ASSUME_YES=0
+STATE="${XDG_DATA_HOME:-$HOME/.local/share}/arch-remote"
+
+usage() {
+    cat <<EOF
+usage: arch-remote-run [options]
+
+  --port N        port to ssh to (default: 2222)
+  --net host|bridge
+                  host   (default) share the VM's network stack; sshd binds
+                         PORT directly, and so does everything else the
+                         container listens on — all public on the VM's address
+                  bridge own namespace; publish only sshd as PORT:22
+  --name NAME     container name (default: $NAME)
+  --image NAME    image to run (default: $IMAGE)
+  --electron      add --cap-add=sys_admin so bitwarden/1password start.
+                  OFF by default: this box faces the internet, and Electron's
+                  SUID sandbox is the only reason the capability is needed.
+  --foreground    run attached instead of detached (for debugging)
+  -y, --yes       non-interactive; defaults for anything not given
+  -h, --help      this
+EOF
+}
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --port)  PORT="${2:-}"; shift 2 ;;
+        --net)   NETMODE="${2:-}"; shift 2 ;;
+        --name)  NAME="${2:-}"; shift 2 ;;
+        --image) IMAGE="${2:-}"; shift 2 ;;
+        --electron)   ELECTRON=1; shift ;;
+        --foreground) FOREGROUND=1; shift ;;
+        -y|--yes) ASSUME_YES=1; shift ;;
+        -h|--help) usage; exit 0 ;;
+        *) echo "unknown argument: $1 (try --help)" >&2; exit 2 ;;
+    esac
+done
+
+if [ -z "$PORT" ]; then
+    if [ "$ASSUME_YES" = 1 ] || [ ! -t 0 ]; then
+        PORT=2222
+    else
+        read -rp "Publish container sshd on host port [2222]: " reply || true
+        PORT="${reply:-2222}"
+    fi
+fi
+[[ "$PORT" =~ ^[0-9]+$ ]] || { echo "--port must be a number (got: $PORT)" >&2; exit 2; }
+
+case "$NETMODE" in
+    host|bridge) ;;
+    *) echo "--net must be 'host' or 'bridge' (got: $NETMODE)" >&2; exit 2 ;;
+esac
+
+# Under host netns sshd binds the port itself, so both of these are real
+# failures rather than style points. Checked most-specific first: 22 is also
+# privileged, and "collides with the VM's sshd" is the more useful message.
+# Bridge mode is exempt — podman does the publishing there, and the container's
+# own 22 is private to its namespace.
+if [ "$NETMODE" = host ] && [ "$PORT" = 22 ]; then
+    echo "ERROR: port 22 under --net host collides with the VM's own sshd," >&2
+    echo "       which would lock you out of the VM itself. Use 2222." >&2
+    exit 2
+fi
+if [ "$NETMODE" = host ] && [ "$PORT" -lt 1024 ]; then
+    echo "ERROR: --net host cannot use privileged port $PORT as a rootless user." >&2
+    echo "       Pick a port above 1024, or use --net bridge." >&2
+    exit 2
+fi
+
+podman image exists "$IMAGE" 2>/dev/null || {
+    echo "ERROR: image $IMAGE not found. Build it first:" >&2
+    echo "  .host/containers/arch-remote/build.sh" >&2
+    exit 1
+}
+
+# Without an authorized_keys you will build, start, and then be unable to get
+# in — the container is key-only on purpose. Catch it before starting, not
+# after. $HOME is bind-mounted, so this is the very file sshd will read.
+if [ ! -s "$HOME/.ssh/authorized_keys" ]; then
+    echo "WARNING: $HOME/.ssh/authorized_keys is missing or empty." >&2
+    echo "         The container allows public-key auth ONLY, so you will not" >&2
+    echo "         be able to ssh in. Add your laptop's public key first." >&2
+    if [ "$ASSUME_YES" != 1 ] && [ -t 0 ]; then
+        read -rp "start anyway? [y/N]: " reply || true
+        case "${reply:-n}" in [Yy]*) ;; *) exit 1 ;; esac
+    fi
+fi
+
+# sshd's StrictModes refuses a home directory that is group- or world-writable,
+# and the failure surfaces as a bare "Permission denied (publickey)" with the
+# reason only in the container's log. Cheaper to say so here.
+home_perm="$(stat -c %a "$HOME")"
+case "$home_perm" in
+    *[2367])
+        echo "WARNING: $HOME is group/world-writable (mode $home_perm)." >&2
+        echo "         sshd StrictModes will reject key auth. Fix with:" >&2
+        echo "           chmod go-w $HOME" >&2
+        ;;
+esac
+
+# Host keys persist here across container replacement, so your laptop's
+# known_hosts entry stays valid. sshd-keygen-container.service fills it on
+# first boot; 0700 because these are private keys.
+install -d -m 700 "$STATE/ssh"
+
+# sshd's listening port, generated per run and bind-mounted in as a drop-in.
+# The image ships NO Port directive precisely so this is the only one: sshd
+# accumulates Port lines instead of overriding, so a second one would add a
+# listener rather than replace it.
+#
+# Under host netns sshd binds this on the VM directly. Under bridge it stays 22
+# inside and podman publishes it, so the image never has to change either way.
+install -d -m 755 "$STATE/sshd.d"
+sshd_port=22
+[ "$NETMODE" = host ] && sshd_port="$PORT"
+printf '# generated by arch-remote-run — do not edit\nPort %s\n' \
+    "$sshd_port" > "$STATE/sshd.d/20-port.conf"
+chmod 644 "$STATE/sshd.d/20-port.conf"
+
+caps=()
+if [ "$ELECTRON" = 1 ]; then
+    # Same reason as the desktop session: Electron's SUID sandbox calls
+    # clone(CLONE_NEWPID|CLONE_NEWNET) without CLONE_NEWUSER, which needs
+    # CAP_SYS_ADMIN. Scoped to the container's userns — it confers nothing on
+    # the VM itself — but it is still a capability we would rather not hold on
+    # an internet-facing host by default.
+    caps+=(--cap-add=sys_admin)
+fi
+
+net=()
+if [ "$NETMODE" = host ]; then
+    net+=(--net=host)
+    echo "==> starting $NAME (--net=host, sshd binds $PORT on the VM)"
+    echo "    NOTE: every other port the container listens on is ALSO public"
+    echo "          on this VM's address. Firewall accordingly."
+else
+    net+=(-p "$PORT:22")
+    echo "==> starting $NAME (bridge, sshd published as $PORT:22)"
+fi
+
+mode=(-d)
+[ "$FOREGROUND" = 1 ] && mode=()
+
+podman run --rm --replace --name "$NAME" \
+    "${mode[@]}" \
+    --systemd=always \
+    --userns=keep-id --user 0 \
+    --pids-limit=16384 \
+    "${net[@]}" \
+    -v "$STATE/ssh:/etc/ssh/keys" \
+    -v "$STATE/sshd.d/20-port.conf:/etc/ssh/sshd_config.d/20-port.conf:ro" \
+    -v "$HOME:$HOME" \
+    "${caps[@]}" \
+    "$IMAGE"
+
+if [ "$FOREGROUND" != 1 ]; then
+    cat <<EOF
+
+Started. From your laptop:
+
+    waypipe ssh -p $PORT $USER@<vm-address> alacritty
+
+First connection will show an unknown-host-key prompt; the key is generated
+once and kept in $STATE/ssh, so it will not change on restart.
+
+  logs:  podman logs -f $NAME
+  shell: podman exec -it -u $USER $NAME zsh
+  stop:  podman stop $NAME
+
+Remember the VM firewall still has to allow $PORT inbound.
+EOF
+fi

@@ -91,6 +91,29 @@ if [ -f /etc/cdi/nvidia.yaml ]; then
     echo "nvidia: /etc/cdi/nvidia.yaml present; injecting GPU via CDI" >>"$LOG"
 fi
 
+# Hotplug device passthrough. podman wires devices in at run time — `--device`
+# expands to one bind-mount per node — so anything plugged in after this point
+# would never appear inside. Instead we bind ONE host directory that udev keeps
+# filled with nodes for the allowlisted device classes (USB bus nodes, hidraw,
+# USB serial, webcams, USB storage). It is a live directory on a shared tmpfs,
+# so nodes created in it later are visible in the running container, and the
+# in-container container-device-mirror.service projects them onto their real
+# /dev paths. See .host/bin/container-device-export for the host half.
+#
+# /dev/input is NOT among the staged classes: sway gets keyboards and mice via
+# seatd, so raw evdev in the container would add keylogging exposure for no
+# functional gain (commit 416bb6f).
+dev=()
+if [ -d /run/container-devices ]; then
+    dev+=(-v /run/container-devices:/run/host-devices)
+else
+    echo "note: /run/container-devices missing — USB hotplug passthrough is off (run pre-req.sh)" >>"$LOG"
+fi
+# /dev/disk is nothing but udev's symlink farm (by-id, by-uuid, by-label); no
+# device access rides on it. Mounted read-only so USB storage can be addressed
+# by stable name. Links to devices outside the allowlist simply dangle.
+[ -d /dev/disk ] && dev+=(-v /dev/disk:/dev/disk:ro)
+
 rt=()
 hr="$(ulimit -Hr 2>/dev/null || echo 0)"
 [[ "$hr" == unlimited ]] && hr=95
@@ -114,6 +137,7 @@ exec podman run --rm --replace --name sway-desktop \
   --cap-add=sys_admin \
   "${rt[@]}" \
   "${gpu[@]}" \
+  "${dev[@]}" \
   --device /dev/dri \
   -v /run/seatd.sock:/run/seatd.sock \
   -v /run/udev:/run/udev:ro \
