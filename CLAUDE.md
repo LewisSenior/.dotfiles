@@ -50,6 +50,7 @@ Each top-level directory is a stow package that deploys to `$HOME`:
 | **alacritty** | GPU-accelerated terminal |
 | **waybar** | Status bar (jsonc config) |
 | **scripts** | Custom utilities in `~/.local/bin/scripts/` |
+| **pi** | pi.dev agent config + hand-written extensions — see below |
 
 ### Neovim Plugin Architecture
 
@@ -66,6 +67,31 @@ Located in `scripts/.local/bin/scripts/`:
 - `tmux-sessionizer` - Fuzzy project session launcher (searches ~/PineMedia, ~/cyberscape, ~/.dotfiles, ~/, ~/tmp)
 - `sway-launch` - Sway wrapper applying the NVIDIA proprietary-driver workarounds
 - `callmix-setup.sh` - PipeWire virtual audio sink for call recording
+
+### pi (pi.dev agent)
+
+`pi/.pi/` deploys to `~/.pi/`. Only hand-written config is tracked; pi's own state
+stays in `$HOME`:
+
+| Tracked | Not tracked (see `.gitignore`) |
+|---------|-------------------------------|
+| `agent/settings.json` — packages, default provider/model | `agent/auth.json` — credential store |
+| `agent/extensions/permission-gate.ts` — bash/write gate | `agent/sessions/` — transcripts (work content) |
+| `agent/extensions/claude-code-aliases.ts` | `agent/npm/`, `agent/bin/` — fetched by pi |
+| `agent/extensions/sandbox.json` — network/fs allowlist | `agent/extensions/sandbox/` — vendored upstream example |
+| `web-search.json` | |
+
+Two things this package depends on:
+
+- **`--no-folding` in `.stowrc` is load-bearing.** It keeps `~/.pi/agent/` a real
+  directory with per-file symlinks. Fold it and `~/.pi` becomes one symlink into this
+  repo — pi would then write `auth.json` and `sessions/` **into a public checkout**.
+- **`settings.json` is mutable.** pi rewrites it with a plain `writeFileSync`
+  (no temp-file-and-rename), so it writes *through* the symlink and the link survives —
+  but `pi install` and version bumps (`lastChangelogVersion`) will show up as repo diffs.
+
+`permission-gate.ts` blocks rather than prompts when there is no UI (`ctx.hasUI`
+false), so any non-interactive caller hits a hard deny on a flagged command.
 
 ### Container Architecture
 

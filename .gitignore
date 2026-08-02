@@ -16,6 +16,19 @@ ssh/.ssh/*
 # gh CLI auth (hosts.yml stores an OAuth token in cleartext)
 .gh-config/
 
+# pi (pi.dev) — only hand-written config is tracked. Everything below is either a
+# credential store, work content, or upstream code that pi re-fetches on its own.
+# stow's --no-folding keeps ~/.pi/agent a real directory, so pi writes these to
+# $HOME and they never reach the repo — this block is belt-and-braces against a
+# stray `git add -A`. This repo is PUBLIC.
+pi/.pi/agent/auth.json
+pi/.pi/agent/sessions/
+pi/.pi/agent/npm/
+pi/.pi/agent/bin/
+# Vendored copy of pi's own example sandbox extension (upstream code + its own
+# node_modules). sandbox.json — the allowlist, which is ours — is tracked.
+pi/.pi/agent/extensions/sandbox/
+
 # AUR checkouts / package build trees. install.sh and the container build clone
 # these; they are upstream sources + build output, not dotfiles, and they carry
 # their own nested .git (which would land here as a broken gitlink). yay/ alone
