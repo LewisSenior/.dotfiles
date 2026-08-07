@@ -156,19 +156,40 @@ flock -n 9 || exit 0
 
 trap 'unload_legs' EXIT INT TERM
 
-reconcile
-
-# Switching a Bluetooth card between A2DP and HSP/HFP destroys and recreates its
-# nodes, which permanently kills a loopback pinned to them, so rebuild on device
-# changes too — not just when a recorder comes and goes.
-pactl subscribe 2>/dev/null | while read -r event; do
-  case "$event" in
-    *"on card"* | *"on source"* | *"on sink"*) ;;
-    *) continue ;;
-  esac
-  # Coalesce the burst, but cap the wait: unrelated traffic (every pactl
-  # invocation on the system emits client events) must not defer this forever.
-  settle_until=$((SECONDS + 3))
-  while [ "$SECONDS" -lt "$settle_until" ] && read -r -t 1 _; do :; done
+# pactl subscribe exits when the server does, and the pipewire units are all
+# Restart=on-failure behind enabled sockets — so the server restarting itself is
+# a routine event, not an exceptional one. Letting that end the script is the
+# worst of the failure modes available: the trap unloads only the loopbacks, so
+# the null sink outlives us and CallMix keeps appearing in every recorder's
+# device list with no legs and nobody left to build them. It records silence, and
+# nothing says otherwise until a sway reload. So reconnect instead, and reconcile
+# on each attempt — a server restart destroys the null sink too, and only
+# reconcile puts it back.
+while :; do
   reconcile
+  subscribed_at=$SECONDS
+
+  # Switching a Bluetooth card between A2DP and HSP/HFP destroys and recreates its
+  # nodes, which permanently kills a loopback pinned to them, so rebuild on device
+  # changes too — not just when a recorder comes and goes.
+  pactl subscribe 2>/dev/null | while read -r event; do
+    case "$event" in
+      *"on card"* | *"on source"* | *"on sink"*) ;;
+      *) continue ;;
+    esac
+    # Coalesce the burst, but cap the wait: unrelated traffic (every pactl
+    # invocation on the system emits client events) must not defer this forever.
+    settle_until=$((SECONDS + 3))
+    while [ "$SECONDS" -lt "$settle_until" ] && read -r -t 1 _; do :; done
+    reconcile
+  done
+
+  # A subscription that died immediately means the server is still down, so back
+  # off rather than spin on a long outage. One that lasted was a live server going
+  # away, and the graph needs rebuilding while the user may still be recording.
+  if [ $((SECONDS - subscribed_at)) -lt 5 ]; then
+    sleep 5
+  else
+    sleep 1
+  fi
 done
