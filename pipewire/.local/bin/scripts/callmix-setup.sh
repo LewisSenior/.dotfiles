@@ -129,11 +129,17 @@ build_legs() {
 reconcile() {
   local mic out
   ensure_sink
-  mic=$(desired_mic)
-  retarget_apps "$mic"
 
+  # Retargeting is gated on recording for the same reason the loopbacks are, and
+  # it is the more dangerous of the two: the Bluetooth mic exists only in
+  # HSP/HFP, so parking a sticky app's live capture on it makes that app hold the
+  # headset in call mode. Nothing then releases it — the held profile is what
+  # keeps the mic present, so desired_mic keeps returning it. A retarget outside a
+  # recording has no one to serve and can wedge the card for days.
   if [ "$(callmix_readers)" -gt 0 ]; then
+    mic=$(desired_mic)
     out=$(desired_out)
+    retarget_apps "$mic"
     if [ "$(loaded_sources)" != "$(printf '%s\n%s\n' "$out" "$mic" | sort)" ]; then
       unload_legs
       build_legs "$out" "$mic"
