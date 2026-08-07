@@ -1,5 +1,5 @@
 {
-  "lastChangelogVersion": "0.83.0",
+  "lastChangelogVersion": "0.84.0",
   "packages": [
     "npm:pi-claude-bridge",
     "npm:pi-mcp-extension",
@@ -7,5 +7,6 @@
   ],
   "defaultProvider": "claude-bridge",
   "defaultModel": "claude-opus-5",
-  "defaultThinkingLevel": "xhigh"
+  "defaultThinkingLevel": "xhigh",
+  "shellCommandPrefix": "exec 0</dev/null"
 }
