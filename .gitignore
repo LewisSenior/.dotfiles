@@ -19,12 +19,27 @@ ssh/.ssh/*
 # pi (pi.dev) — only hand-written config is tracked. Everything below is either a
 # credential store, work content, or upstream code that pi re-fetches on its own.
 # stow's --no-folding keeps ~/.pi/agent a real directory, so pi writes these to
-# $HOME and they never reach the repo — this block is belt-and-braces against a
-# stray `git add -A`. This repo is PUBLIC.
+# $HOME and they never reach the repo. That is not a guarantee: stow reads
+# .stowrc from the CURRENT directory (man stow, RESOURCE FILES), so --no-folding
+# applies only when stow is run from this repo's root. `stow -d ~/.dotfiles -t ~
+# pi` from anywhere else silently folds ~/.pi into one symlink into the checkout,
+# and pi then writes straight into it. This block is what stands between that and
+# a push. This repo is PUBLIC.
 pi/.pi/agent/auth.json
 pi/.pi/agent/sessions/
 pi/.pi/agent/npm/
 pi/.pi/agent/bin/
+# Parked permission-gate escalations. The gate writes these 0600 precisely
+# because a recorded command can carry a credential in its arguments.
+pi/.pi/agent/gate-requests/
+# What an unattended agent is allowed to do on this host: security posture, and
+# it may carry the judge's shared secret. $PI_GATE_POLICY can point elsewhere.
+pi/.pi/agent/extensions/gate-policy.json
+# Provider request/response logs — work content, same reason as sessions/. The
+# files happen to end in .log and are caught by the generic rule below; the
+# directory is not, so anything else dropped in here would be exposed.
+pi/.pi/agent/cc-cli-logs/
+pi/.pi/agent/models-store.json
 # Vendored copy of pi's own example sandbox extension (upstream code + its own
 # node_modules). sandbox.json — the allowlist, which is ours — is tracked.
 pi/.pi/agent/extensions/sandbox/

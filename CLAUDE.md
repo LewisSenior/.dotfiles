@@ -79,19 +79,33 @@ stays in `$HOME`:
 | `agent/extensions/permission-gate.ts` — bash/write gate | `agent/sessions/` — transcripts (work content) |
 | `agent/extensions/claude-code-aliases.ts` | `agent/npm/`, `agent/bin/` — fetched by pi |
 | `agent/extensions/sandbox.json` — network/fs allowlist | `agent/extensions/sandbox/` — vendored upstream example |
-| `web-search.json` | |
+| `web-search.json` | `agent/gate-requests/` — parked escalations; a recorded command can carry a credential |
+| | `agent/extensions/gate-policy.json` — what an unattended agent may do here; may carry the judge secret |
+| | `agent/cc-cli-logs/` — provider request/response logs (work content) |
+| | `agent/models-store.json` — pi state |
 
 Two things this package depends on:
 
 - **`--no-folding` in `.stowrc` is load-bearing.** It keeps `~/.pi/agent/` a real
   directory with per-file symlinks. Fold it and `~/.pi` becomes one symlink into this
   repo — pi would then write `auth.json` and `sessions/` **into a public checkout**.
+  Stow reads `.stowrc` from the *current directory* (`man stow`, RESOURCE FILES), so
+  this only applies when stow runs from the repo root — `install.sh` does (`cd
+  "$DOTFILES"`), but `stow -d ~/.dotfiles -t ~ pi` from elsewhere silently folds.
+  `~/.stowrc` carries `--no-folding` as well to close that gap; it is untracked, so a
+  fresh machine has only the repo copy until it is recreated. The `.gitignore` block
+  is the portable half of the defence.
 - **`settings.json` is mutable.** pi rewrites it with a plain `writeFileSync`
   (no temp-file-and-rename), so it writes *through* the symlink and the link survives —
   but `pi install` and version bumps (`lastChangelogVersion`) will show up as repo diffs.
 
-`permission-gate.ts` blocks rather than prompts when there is no UI (`ctx.hasUI`
-false), so any non-interactive caller hits a hard deny on a flagged command.
+`permission-gate.ts` prompts only in the TUI (`ctx.mode === "tui"`; `ctx.hasUI` is
+true in RPC mode too, so gating on it made shim-driven runs block forever on a
+dialog nobody would answer). Everywhere else each rule id resolves through
+`gate-policy.json` to allow | deny | escalate, with an optional judge to grade the
+specific command. It fails closed: a missing or malformed policy denies everything,
+an unknown verdict floors to deny, and an unreachable judge parks the call rather
+than approving it.
 
 ### Container Architecture
 
