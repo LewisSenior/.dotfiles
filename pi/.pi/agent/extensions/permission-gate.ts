@@ -1,8 +1,9 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { randomUUID } from "node:crypto";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
 
@@ -54,6 +55,216 @@ const PROTECTED_PATHS = [/\.env(\.|$)/, /(^|\/)\.git\//, /(^|\/)id_[a-z0-9]+$/i,
 
 type Cmd = { argv0: string; bare: string; quoted: string[]; tokens: string[] };
 type Finding = { id: string; why: string };
+
+// ---------------------------------------------------------------------------
+// Headless policy
+//
+// Interactively, a flagged command prompts. Headlessly there is nobody to ask,
+// and the original behaviour was to hard-deny everything — which makes an
+// unattended agent run non-functional the moment it touches sudo, rm -r, a
+// force push, destructive SQL, ...
+//
+// So when `ctx.hasUI` is false, each rule id resolves through a policy file to
+// allow | deny | escalate. Two invariants:
+//
+//   * The DENY table is absolute in both modes and is never consulted here.
+//   * A missing, unreadable or malformed policy falls back to `deny` for
+//     everything, which is exactly the original behaviour. Failing closed means
+//     a broken config cannot silently widen what an unattended agent may do.
+//
+// Interactive behaviour is deliberately untouched by all of this.
+// ---------------------------------------------------------------------------
+
+/**
+ * Is there a HUMAN to ask — not merely a UI transport?
+ *
+ * `ctx.hasUI` answers the second question, not the first. pi's own docs are explicit
+ * (docs/rpc.md:1164): "ctx.hasUI is true in RPC mode because the dialog and
+ * fire-and-forget methods are functional via the extension UI sub-protocol. Use
+ * ctx.mode === 'tui' to guard TUI-specific features."
+ *
+ * Gating on hasUI meant every shim-driven run took the INTERACTIVE branch, called
+ * ctx.ui.select(), and blocked forever waiting for an answer no automated client was
+ * going to send. It looked like the model stalling: the tool call never returned and
+ * the run died on the caller's idle timeout with no error anywhere. Print mode
+ * (`pi -p`) has no UI channel, so it took the headless path and worked — which is
+ * exactly why testing only with `pi -p` hid the bug.
+ */
+function isInteractive(ctx: { mode?: string; hasUI?: boolean }): boolean {
+	return ctx.mode === "tui";
+}
+
+type Verdict = "allow" | "deny" | "escalate";
+
+type Judge = {
+	// Off unless a URL is configured, so this file behaves exactly as it did before
+	// L2b on any host that does not run the shim.
+	url: string;
+	secret: string;
+	timeoutMs: number;
+};
+
+type Policy = {
+	default: Verdict;
+	rules: Record<string, Verdict>;
+	protectedPaths: Verdict;
+	requestDir: string;
+	judge: Judge | null;
+};
+
+type Judgement = { verdict: Verdict; risk: number; rationale: string; legible: string };
+
+/**
+ * Ask the shim's judge to grade a specific command (L2b).
+ *
+ * Only ever consulted for calls the static policy resolved to `escalate` — a `deny`
+ * is never reconsidered, and an `allow` needs no second opinion. So the judge can
+ * only ever *narrow* an escalation into allow/deny, never widen a denial.
+ *
+ * Returns null on any failure, and the caller then parks the call: an unreachable
+ * judge must not become an approval.
+ */
+async function askJudge(judge: Judge, command: string, findings: Finding[], cwd: string): Promise<Judgement | null> {
+	const controller = new AbortController();
+	const timer = setTimeout(() => controller.abort(), judge.timeoutMs);
+	try {
+		const response = await fetch(judge.url, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				...(judge.secret ? { "X-Pishim-Gate-Secret": judge.secret } : {}),
+			},
+			body: JSON.stringify({ command, findings, cwd }),
+			signal: controller.signal,
+		});
+		if (!response.ok) return null;
+		const body = (await response.json()) as Partial<Judgement>;
+		if (body.verdict !== "allow" && body.verdict !== "deny" && body.verdict !== "escalate") return null;
+		return {
+			verdict: body.verdict,
+			risk: typeof body.risk === "number" ? body.risk : 100,
+			rationale: typeof body.rationale === "string" ? body.rationale : "",
+			legible: typeof body.legible === "string" ? body.legible : String(body.rationale ?? ""),
+		};
+	} catch {
+		return null;
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
+const PI_DIR = join(homedir(), ".pi", "agent");
+
+// $PI_GATE_POLICY wins, so the policy itself can live outside this (public) repo.
+// A file enumerating what an unattended agent may do on this host is security
+// posture, not configuration worth publishing — pi-chat-stack keeps it private
+// and points here. With the variable unset and no local file, the gate stays
+// fail-closed, which is the pre-L2a behaviour.
+const POLICY_PATH = process.env.PI_GATE_POLICY || join(PI_DIR, "extensions", "gate-policy.json");
+
+const CLOSED: Policy = {
+	default: "deny",
+	rules: {},
+	protectedPaths: "deny",
+	requestDir: join(PI_DIR, "gate-requests"),
+	judge: null,
+};
+
+function asVerdict(value: unknown, fallback: Verdict): Verdict {
+	return value === "allow" || value === "deny" || value === "escalate" ? value : fallback;
+}
+
+async function loadPolicy(): Promise<Policy> {
+	// Read per decision rather than caching: flagged commands are rare, the file
+	// is tiny, and it means an operator (or L2b) can change policy without
+	// restarting a long-lived agent run.
+	let raw: unknown;
+	try {
+		raw = JSON.parse(await readFile(POLICY_PATH, "utf8"));
+	} catch {
+		return CLOSED;
+	}
+	if (typeof raw !== "object" || raw === null) return CLOSED;
+
+	const obj = raw as Record<string, unknown>;
+	const rules: Record<string, Verdict> = {};
+	if (typeof obj.rules === "object" && obj.rules !== null) {
+		for (const [id, verdict] of Object.entries(obj.rules as Record<string, unknown>)) {
+			const resolved = asVerdict(verdict, "deny");
+			// An unrecognised verdict string is a typo, and a typo must not read as
+			// "allow". asVerdict already floors it at deny; record it anyway.
+			rules[id] = resolved;
+		}
+	}
+	let judge: Judge | null = null;
+	const rawJudge = obj.judge;
+	if (typeof rawJudge === "object" && rawJudge !== null) {
+		const j = rawJudge as Record<string, unknown>;
+		// Enabled only by an explicit url. Absent => pre-L2b behaviour.
+		if (j.enabled !== false && typeof j.url === "string" && j.url) {
+			judge = {
+				url: j.url,
+				// Env wins when the policy leaves it blank, so the shared secret never has
+				// to be committed alongside the policy. pi is spawned by the shim and
+				// inherits its environment, so this is simply present.
+				secret:
+					typeof j.secret === "string" && j.secret
+						? j.secret
+						: process.env.PISHIM_GATE_SECRET || "",
+				timeoutMs: typeof j.timeoutMs === "number" ? j.timeoutMs : 30000,
+			};
+		}
+	}
+
+	return {
+		default: asVerdict(obj.default, "deny"),
+		rules,
+		protectedPaths: asVerdict(obj.protectedPaths, "deny"),
+		requestDir: typeof obj.requestDir === "string" ? obj.requestDir.replace(/^~(?=\/)/, homedir()) : CLOSED.requestDir,
+		judge,
+	};
+}
+
+function verdictFor(id: string, policy: Policy): Verdict {
+	return policy.rules[id] ?? policy.default;
+}
+
+/** Park an escalated call as a request the shim can surface. Returns its id. */
+async function recordRequest(
+	policy: Policy,
+	kind: "bash" | "write",
+	subject: string,
+	findings: Finding[],
+	judgement?: Judgement | null,
+): Promise<string> {
+	const id = randomUUID().slice(0, 8);
+	try {
+		await mkdir(policy.requestDir, { recursive: true, mode: 0o700 });
+		await writeFile(
+			join(policy.requestDir, `${id}.json`),
+			JSON.stringify(
+				{
+					id,
+					createdAt: new Date().toISOString(),
+					kind,
+					subject,
+					cwd: process.cwd(),
+					findings,
+					judge: judgement ? { risk: judgement.risk, rationale: judgement.rationale } : null,
+					state: "pending",
+				},
+				null,
+				2,
+			),
+			// The subject may contain a secret (`mysql -pPASSWORD ...`). Owner-only.
+			{ mode: 0o600 },
+		);
+	} catch {
+		// A request we cannot record is still a blocked call — never let a failed
+		// write turn an escalation into an allow.
+	}
+	return id;
+}
 
 async function prettyPrint(script: string): Promise<string> {
 	const dir = await mkdtemp(join(tmpdir(), "pi-gate-"));
@@ -180,8 +391,50 @@ export default function (pi: ExtensionAPI) {
 			if (pending.length === 0) return undefined;
 
 			const reasons = pending.map((f) => f.why).join(", ");
-			if (!ctx.hasUI) {
-				return { block: true, reason: `Needs approval (${reasons}) but no UI available` };
+			if (!isInteractive(ctx)) {
+				const policy = await loadPolicy();
+				const verdicts = pending.map((f) => ({ ...f, verdict: verdictFor(f.id, policy) }));
+
+				// Most restrictive wins: one deny blocks the call regardless of what
+				// else it tripped.
+				const blocked = verdicts.filter((v) => v.verdict === "deny");
+				if (blocked.length > 0) {
+					return {
+						block: true,
+						reason: `Blocked by headless policy (${blocked.map((v) => `${v.why} [${v.id}]`).join(", ")})`,
+					};
+				}
+
+				const escalated = verdicts.filter((v) => v.verdict === "escalate");
+				if (escalated.length > 0) {
+					const why = escalated.map((v) => `${v.why} [${v.id}]`).join(", ");
+
+					// L2b: grade the specific command. Tiered rules are coarse —
+					// `rm -rf ./build` and `rm -rf ~/photos` trip the same rule.
+					let judgement: Judgement | null = null;
+					if (policy.judge) {
+						judgement = await askJudge(policy.judge, event.input.command, escalated, process.cwd());
+					}
+
+					if (judgement?.verdict === "allow") {
+						return undefined;
+					}
+					if (judgement?.verdict === "deny") {
+						return { block: true, reason: `Blocked by judge (${why}) — ${judgement.legible}` };
+					}
+
+					// No judge, judge unreachable, or judge said escalate: park it. An
+					// unreachable judge must never become an approval.
+					const id = await recordRequest(policy, "bash", event.input.command, escalated, judgement);
+					const detail = judgement ? ` — ${judgement.legible}` : "";
+					return {
+						block: true,
+						reason: `Escalated for approval, request ${id} (${why}). Not run.${detail}`,
+					};
+				}
+
+				// Everything pending is explicitly allowed by policy.
+				return undefined;
 			}
 
 			const ONCE = "Allow once";
@@ -199,7 +452,16 @@ export default function (pi: ExtensionAPI) {
 		if (isToolCallEventType("write", event) || isToolCallEventType("edit", event)) {
 			const path = event.input.path;
 			if (!PROTECTED_PATHS.some((p) => p.test(path))) return undefined;
-			if (!ctx.hasUI) return { block: true, reason: `Protected path: ${path}` };
+			if (!isInteractive(ctx)) {
+				const policy = await loadPolicy();
+				if (policy.protectedPaths === "allow") return undefined;
+				if (policy.protectedPaths === "escalate") {
+					const finding = { id: "protected-path", why: `write to ${path}` };
+					const id = await recordRequest(policy, "write", path, [finding]);
+					return { block: true, reason: `Escalated for approval, request ${id} (protected path: ${path}). Not written.` };
+				}
+				return { block: true, reason: `Protected path: ${path}` };
+			}
 			if (!(await ctx.ui.confirm("Write to protected path?", path))) {
 				return { block: true, reason: "Blocked by user" };
 			}
